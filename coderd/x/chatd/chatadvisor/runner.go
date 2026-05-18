@@ -3,15 +3,12 @@ package chatadvisor
 import (
 	"context"
 	"strings"
-	"time"
 
 	"charm.land/fantasy"
 	"golang.org/x/xerrors"
 
 	stringutil "github.com/coder/coder/v2/coderd/util/strings"
-	"github.com/coder/coder/v2/coderd/x/chatd/chatloop"
-	"github.com/coder/coder/v2/coderd/x/chatd/chatretry"
-	"github.com/coder/coder/v2/codersdk"
+	"github.com/coder/coder/v2/coderd/x/chatd/chatnested"
 )
 
 // RunAdvisorOptions carries optional streaming callbacks for a
@@ -43,42 +40,19 @@ func (rt *Runtime) RunAdvisor(
 		}, nil
 	}
 
-	// Clone per invocation and reset inherited state so chatloop cannot
-	// mutate the Runtime's stored options across calls, and so the nested
-	// call never runs as a chain-mode continuation against stale parent
-	// state or persists an orphan stored response on the provider side.
-	nestedProviderOptions := cloneProviderOptions(rt.cfg.ProviderOptions)
-	resetProviderOptionsForNestedCall(nestedProviderOptions)
-
-	var persistedStep chatloop.PersistedStep
-	chatLoopOpts := chatloop.RunOptions{
+	runOpts := chatnested.RunTextOptions{
 		Model:           rt.cfg.Model,
 		Messages:        BuildAdvisorMessages(question, conversationSnapshot),
-		MaxSteps:        1,
 		ModelConfig:     rt.cfg.ModelConfig,
-		ProviderOptions: nestedProviderOptions,
-		PersistStep: func(_ context.Context, step chatloop.PersistedStep) error {
-			persistedStep = step
-			return nil
-		},
+		ProviderOptions: rt.cfg.ProviderOptions,
 	}
-	if opts != nil && opts.OnAdviceDelta != nil {
-		chatLoopOpts.PublishMessagePart = func(role codersdk.ChatMessageRole, part codersdk.ChatMessagePart) {
-			if role != codersdk.ChatMessageRoleAssistant ||
-				part.Type != codersdk.ChatMessagePartTypeText ||
-				part.Text == "" {
-				return
-			}
-			opts.OnAdviceDelta(part.Text)
-		}
-	}
-	if opts != nil && opts.OnAdviceReset != nil {
-		chatLoopOpts.OnRetry = func(int, error, chatretry.ClassifiedError, time.Duration) {
-			opts.OnAdviceReset()
-		}
+	if opts != nil {
+		runOpts.OnTextDelta = opts.OnAdviceDelta
+		runOpts.OnTextReset = opts.OnAdviceReset
 	}
 
-	if err := chatloop.Run(ctx, chatLoopOpts); err != nil {
+	runResult, err := chatnested.RunText(ctx, runOpts)
+	if err != nil {
 		// Refund the use so a transient provider failure does not
 		// permanently exhaust the per-run advisor budget.
 		rt.release()
@@ -89,7 +63,7 @@ func (rt *Runtime) RunAdvisor(
 		}, nil
 	}
 
-	advice := extractAdvisorText(persistedStep)
+	advice := runResult.Text
 	if advice == "" {
 		// Refund: the run did not produce advice, so the contract
 		// "increments on every successful advisor call" treats this
@@ -108,20 +82,4 @@ func (rt *Runtime) RunAdvisor(
 		AdvisorModel:  rt.cfg.Model.Provider() + "/" + rt.cfg.Model.Model(),
 		RemainingUses: rt.RemainingUses(),
 	}, nil
-}
-
-func extractAdvisorText(step chatloop.PersistedStep) string {
-	parts := make([]string, 0, len(step.Content))
-	for _, content := range step.Content {
-		text, ok := fantasy.AsContentType[fantasy.TextContent](content)
-		if !ok {
-			continue
-		}
-		trimmed := strings.TrimSpace(text.Text)
-		if trimmed == "" {
-			continue
-		}
-		parts = append(parts, trimmed)
-	}
-	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }

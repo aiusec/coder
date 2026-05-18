@@ -4991,6 +4991,7 @@ const (
 	ExperimentOAuth2                Experiment = "oauth2"                  // Enables OAuth2 provider functionality.
 	ExperimentMCPServerHTTP         Experiment = "mcp-server-http"         // Enables the MCP HTTP server functionality.
 	ExperimentWorkspaceBuildUpdates Experiment = "workspace-build-updates" // Enables publishing workspace build updates to the all builds pubsub channel.
+	ExperimentChatSideQuestions     Experiment = "chat-side-questions"     // Enables one-shot side questions for chats.
 )
 
 func (e Experiment) DisplayName() string {
@@ -5007,6 +5008,8 @@ func (e Experiment) DisplayName() string {
 		return "OAuth2 Provider Functionality"
 	case ExperimentMCPServerHTTP:
 		return "MCP HTTP Server Functionality"
+	case ExperimentChatSideQuestions:
+		return "Chat Side Questions"
 	case ExperimentWorkspaceBuildUpdates:
 		return "Workspace Build Updates Channel"
 	default:
@@ -5025,6 +5028,7 @@ var ExperimentsKnown = Experiments{
 	ExperimentWorkspaceUsage,
 	ExperimentOAuth2,
 	ExperimentMCPServerHTTP,
+	ExperimentChatSideQuestions,
 	ExperimentWorkspaceBuildUpdates,
 }
 

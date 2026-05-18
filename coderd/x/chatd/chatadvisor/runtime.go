@@ -90,23 +90,6 @@ func cloneProviderOptions(opts fantasy.ProviderOptions) fantasy.ProviderOptions 
 	return cloned
 }
 
-// resetProviderOptionsForNestedCall strips inherited state from opts that
-// does not apply to an ephemeral advisor call. PreviousResponseID is
-// cleared so the nested call is not sent as a chain-mode continuation
-// (BuildAdvisorMessages sends the full history, not an incremental turn).
-// Store is forced off so the advisor call does not persist an orphan
-// response on the provider side. Must be called on a cloned map to avoid
-// mutating shared parent state.
-func resetProviderOptionsForNestedCall(opts fantasy.ProviderOptions) {
-	for _, value := range opts {
-		if typed, ok := value.(*fantasyopenai.ResponsesProviderOptions); ok && typed != nil {
-			storeDisabled := false
-			typed.PreviousResponseID = nil
-			typed.Store = &storeDisabled
-		}
-	}
-}
-
 // RemainingUses reports how many advisor calls are still available for the
 // current runtime.
 func (rt *Runtime) RemainingUses() int {

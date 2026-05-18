@@ -8,6 +8,7 @@ import {
 	type FC,
 	Fragment,
 	memo,
+	useEffect,
 	useLayoutEffect,
 	useRef,
 	useState,
@@ -207,13 +208,17 @@ const SmoothedResponse = memo<{
 	text: string;
 	streamKey: string;
 	urlTransform?: UrlTransform;
-}>(({ text, streamKey, urlTransform }) => {
+	onVisibleTextChange?: (text: string) => void;
+}>(({ text, streamKey, urlTransform, onVisibleTextChange }) => {
 	const { visibleText } = useSmoothStreamingText({
 		fullText: text,
 		isStreaming: true,
 		bypassSmoothing: false,
 		streamKey,
 	});
+	useEffect(() => {
+		onVisibleTextChange?.(visibleText);
+	}, [onVisibleTextChange, visibleText]);
 	return (
 		<Response streaming urlTransform={urlTransform}>
 			{visibleText}
@@ -277,6 +282,7 @@ export const BlockList: FC<{
 	askUserQuestionResponseTextByToolId?: ReadonlyMap<string, string>;
 	hasUserResponseAfterAskQuestion?: boolean;
 	urlTransform?: UrlTransform;
+	onVisibleResponseTextChange?: (text: string) => void;
 }> = ({
 	blocks,
 	tools,
@@ -296,6 +302,7 @@ export const BlockList: FC<{
 	askUserQuestionResponseTextByToolId,
 	hasUserResponseAfterAskQuestion = false,
 	urlTransform,
+	onVisibleResponseTextChange,
 }) => {
 	const prefQuery = useQuery(preferenceSettings());
 	const thinkingDisplayMode: ThinkingDisplayMode =
@@ -342,6 +349,7 @@ export const BlockList: FC<{
 								text={block.text}
 								streamKey={keyPrefix}
 								urlTransform={urlTransform}
+								onVisibleTextChange={onVisibleResponseTextChange}
 							/>
 						) : (
 							<Response

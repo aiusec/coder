@@ -3312,6 +3312,20 @@ class ExperimentalApiMethods {
 		return response.data;
 	};
 
+	createChatSideQuestion = async (
+		chatId: string,
+		req: TypesGen.CreateChatSideQuestionRequest,
+		signal?: AbortSignal,
+	): Promise<TypesGen.CreateChatSideQuestionResponse> => {
+		const response =
+			await this.axios.post<TypesGen.CreateChatSideQuestionResponse>(
+				`/api/experimental/chats/${chatId}/side-questions`,
+				req,
+				{ signal },
+			);
+		return response.data;
+	};
+
 	editChatMessage = async (
 		chatId: string,
 		messageId: number,

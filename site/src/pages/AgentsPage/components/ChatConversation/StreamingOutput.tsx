@@ -55,6 +55,7 @@ export const StreamingOutput: FC<{
 	startingResetKey?: string;
 	urlTransform?: UrlTransform;
 	mcpServers?: readonly TypesGen.MCPServerConfig[];
+	onVisibleResponseTextChange?: (text: string) => void;
 }> = ({
 	streamState,
 	streamTools,
@@ -65,6 +66,7 @@ export const StreamingOutput: FC<{
 	startingResetKey,
 	urlTransform,
 	mcpServers,
+	onVisibleResponseTextChange,
 }) => {
 	if (liveStatus.phase === "idle") {
 		return null;
@@ -109,6 +111,7 @@ export const StreamingOutput: FC<{
 								subagentStatusOverrides={subagentStatusOverrides}
 								urlTransform={urlTransform}
 								mcpServers={mcpServers}
+								onVisibleResponseTextChange={onVisibleResponseTextChange}
 							/>
 						)}
 						{needsStreamingThinking && <StreamingThinkingPlaceholder />}
