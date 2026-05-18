@@ -59,6 +59,13 @@ directory from the surgical-reindex payload on mixed commits.
 
 - `linkspector`: excluded via `excludedDirs` in `.github/.linkspector.yml`.
   External-link checking is overkill for contributor tooling.
+- The `deploy-docs` workflow: its `paths:` filter negates `docs/.style/**`,
+  and the surgical-reindex git-diff invocation excludes the same path. See
+  `.github/workflows/deploy-docs.yaml`.
+- The `docs-preview` workflow: its `paths:` filter negates `docs/.style/**`,
+  so `.style`-only PRs produce no preview comment. The selection logic also
+  skips `.style` files when picking the preview target on mixed PRs. See
+  `.github/workflows/docs-preview.yaml`.
 
 ## Editing the style guide
 
