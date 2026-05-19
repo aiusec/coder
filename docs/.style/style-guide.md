@@ -41,8 +41,6 @@ To be filled in by rule-specific tickets. Planned coverage:
 
 - Inclusive language substitutions - see
   [DOCS-182](https://linear.app/codercom/issue/DOCS-182)
-- HashiCorp casing - see
-  [DOCS-34](https://linear.app/codercom/issue/DOCS-34)
 - Dev Container terminology - see
   [DOCS-33](https://linear.app/codercom/issue/DOCS-33)
 - "Setup" vs "set up" and Quickstart casing - see
@@ -51,6 +49,27 @@ To be filled in by rule-specific tickets. Planned coverage:
   [DOCS-37](https://linear.app/codercom/issue/DOCS-37)
 - Weasel words - see
   [DOCS-42](https://linear.app/codercom/issue/DOCS-42)
+- Brand-name casing rollup - see
+  [DOCS-188](https://linear.app/codercom/issue/DOCS-188)
+
+### Brand names
+
+Use each brand's canonical casing in prose. URLs and code references
+(Terraform provider source addresses, GitHub paths) keep the lowercase
+form their owner uses; Vale's `substitution` rule skips inline code and
+links by default, so those are not affected.
+
+| Wrong       | Correct     | Notes                             |
+|-------------|-------------|-----------------------------------|
+| `Hashicorp` | `HashiCorp` | Mixed case: capital H, capital C. |
+
+More brands (GitHub, OpenTofu, Kubernetes, Terraform, JetBrains, VS
+Code) extend this table as they land under
+[DOCS-188](https://linear.app/codercom/issue/DOCS-188).
+
+Enforced by `Coder.BrandNames` (level `error`). To add a brand: append a
+swap to `docs/.style/styles/Coder/BrandNames.yml`, run `make lint/prose`
+to catch existing-content violations, fix them, then commit.
 
 ## Capitalization and punctuation
 
@@ -121,9 +140,9 @@ The curated set lives in `.vale.ini`'s inline comments. Run
 - **write-good** for wordiness, with passive voice and E-Prime off.
 - **alex** loaded a la carte for the inclusive-language checks that do
   not fire on technical vocabulary.
-- **Coder** for custom rules. Empty in v1; rules land through the
-  rule-specific tickets in this project (see
-  `docs/.style/styles/Coder/README.md`).
+- **Coder** for custom rules ([Coder.BrandNames](#brand-names) ships in
+  v1 enforcing HashiCorp casing); rules land through the rule-specific
+  tickets in this project (see `docs/.style/styles/Coder/README.md`).
 
 ## Editor setup
 
