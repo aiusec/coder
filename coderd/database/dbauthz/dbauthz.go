@@ -2233,6 +2233,13 @@ func (q *querier) DeleteOldWorkspaceAgentStats(ctx context.Context) error {
 	return q.db.DeleteOldWorkspaceAgentStats(ctx)
 }
 
+func (q *querier) DeleteOldWorkspaceBuildOrchestrations(ctx context.Context, arg database.DeleteOldWorkspaceBuildOrchestrationsParams) error {
+	if err := q.authorizeContext(ctx, policy.ActionDelete, rbac.ResourceSystem); err != nil {
+		return err
+	}
+	return q.db.DeleteOldWorkspaceBuildOrchestrations(ctx, arg)
+}
+
 func (q *querier) DeleteOrganizationMember(ctx context.Context, arg database.DeleteOrganizationMemberParams) error {
 	return deleteQ[database.OrganizationMember](q.log, q.auth, func(ctx context.Context, arg database.DeleteOrganizationMemberParams) (database.OrganizationMember, error) {
 		member, err := database.ExpectOne(q.OrganizationMembers(ctx, database.OrganizationMembersParams{
