@@ -450,6 +450,9 @@ const AISettingsAddProviderPage = lazy(
 			"./pages/AISettingsPage/ProvidersPage/AddProviderPage/AddProviderPage"
 		),
 );
+const AISettingsGatewayKeysPage = lazy(
+	() => import("./pages/AISettingsPage/GatewayKeysPage/GatewayKeysPage"),
+);
 
 const GlobalLayout = () => {
 	return (
@@ -702,6 +705,10 @@ export const router = createBrowserRouter(
 						<Route element={<DeploymentConfigProvider />}>
 							<Route path="governance" element={<AIGovernanceSettingsPage />} />
 						</Route>
+						<Route
+							path="gateway-keys"
+							element={<AISettingsGatewayKeysPage />}
+						/>
 						<Route index element={<AISettingsProvidersPage />} />
 						<Route path="add" element={<AISettingsAddProviderPage />} />
 						<Route
