@@ -14,6 +14,7 @@ USAGE:
        $ coder templates init
 
 SUBCOMMANDS:
+    ai                     Manage AI features.
     aibridge               Manage AI Bridge.
     boundary               Network isolation tool for monitoring and restricting
                            HTTP/HTTPS requests
