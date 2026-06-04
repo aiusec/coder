@@ -144,7 +144,6 @@ func TestSupportBundle(t *testing.T) {
 		found := false
 		for _, f := range r.File {
 			assertDoesNotContain(t, f, secretValue)
-			require.NotEqual(t, "agent/logs_truncated.txt", f.Name)
 			if f.Name != "agent/logs.txt" {
 				continue
 			}

@@ -3673,6 +3673,27 @@ func TestAgent_DebugServer(t *testing.T) {
 		require.NotContains(t, string(resBody), "new rotated log")
 	})
 
+	t.Run("LogsIncludeActiveOnlyWithAfter", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		url := srv.URL + "/debug/logs?after=" + time.Now().Format(time.RFC3339Nano)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		require.NoError(t, err)
+
+		res, err := srv.Client().Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		defer res.Body.Close()
+		resBody, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		body := string(resBody)
+		require.Contains(t, body, randLogStr)
+		require.Contains(t, body, "coder-agent.log")
+		require.NotContains(t, body, "new rotated log")
+		require.NotContains(t, body, "old rotated log")
+	})
+
 	t.Run("LogsIncludeRotatedWithAfter", func(t *testing.T) {
 		t.Parallel()
 
@@ -3710,8 +3731,10 @@ func TestAgent_DebugServer(t *testing.T) {
 		resBody, err := io.ReadAll(res.Body)
 		require.NoError(t, err)
 		body := string(resBody)
+		require.Contains(t, body, randLogStr)
 		require.Contains(t, body, "new rotated log")
 		require.Contains(t, body, "old rotated log")
+		require.Less(t, strings.Index(body, randLogStr), strings.Index(body, "new rotated log"))
 		require.Less(t, strings.Index(body, "new rotated log"), strings.Index(body, "old rotated log"))
 	})
 

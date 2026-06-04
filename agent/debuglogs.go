@@ -1,7 +1,7 @@
 package agent
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,9 +17,12 @@ import (
 	"cdr.dev/slog/v3"
 )
 
-const debugLogsActiveLimitBytes = 10 * 1024 * 1024
+const (
+	debugLogsActiveLimitBytes      = 10 * 1024 * 1024
+	debugLogsWithRotatedLimitBytes = 100 * 1024 * 1024
+)
 
-var coderAgentBackupLogName = regexp.MustCompile(`^coder-agent-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}\.log$`)
+var coderAgentRotatedLogName = regexp.MustCompile(`^coder-agent-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}\.log$`)
 
 type agentLogFile struct {
 	path    string
@@ -38,8 +41,10 @@ func (a *agent) HandleHTTPDebugLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	disableWriteDeadline(w)
-	files, err := agentDebugLogFiles(a.logDir, after)
+	if err := disableWriteDeadline(w); err != nil {
+		a.logger.Warn(r.Context(), "disable debug log write deadline", slog.Error(err))
+	}
+	files, err := agentDebugLogFiles(r.Context(), a.logger, a.logDir, after)
 	if err != nil {
 		a.logger.Error(r.Context(), "find agent log files", slog.Error(err), slog.F("log_dir", a.logDir))
 		w.WriteHeader(http.StatusInternalServerError)
@@ -47,25 +52,39 @@ func (a *agent) HandleHTTPDebugLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	for i, file := range files {
-		if i > 0 {
-			_, _ = io.WriteString(w, "\n")
+	remaining := int64(debugLogsWithRotatedLimitBytes)
+	wroteAny := false
+	for _, file := range files {
+		if remaining <= 0 {
+			break
 		}
-		_, _ = io.WriteString(w, agentLogBoundary(file))
 		f, err := os.Open(file.path)
 		if err != nil {
 			a.logger.Warn(r.Context(), "open agent log file", slog.Error(err), slog.F("path", file.path))
 			continue
 		}
-		err = func() error {
+		copyErr := func() error {
 			defer f.Close()
-			_, err = io.Copy(w, f)
+			if wroteAny {
+				if err := writeLimitedDebugLogString(w, "\n", &remaining); err != nil || remaining <= 0 {
+					return err
+				}
+			}
+			if err := writeLimitedDebugLogString(w, agentLogBoundary(file), &remaining); err != nil || remaining <= 0 {
+				return err
+			}
+			wroteAny = true
+			n, err := io.Copy(w, io.LimitReader(f, remaining))
+			remaining -= n
 			return err
 		}()
-		if err != nil && !errors.Is(err, io.EOF) {
-			a.logger.Error(r.Context(), "read agent log file", slog.Error(err), slog.F("path", file.path))
+		if copyErr != nil {
+			a.logger.Error(r.Context(), "read agent log file", slog.Error(copyErr), slog.F("path", file.path))
 			return
 		}
+	}
+	if remaining <= 0 {
+		a.logger.Warn(r.Context(), "agent debug logs response truncated", slog.F("limit_bytes", debugLogsWithRotatedLimitBytes))
 	}
 }
 
@@ -94,13 +113,13 @@ func (a *agent) writeActiveDebugLog(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_, err = io.Copy(w, io.LimitReader(f, debugLogsActiveLimitBytes))
-	if err != nil && !errors.Is(err, io.EOF) {
+	if err != nil {
 		a.logger.Error(r.Context(), "read agent log file", slog.Error(err))
 		return
 	}
 }
 
-func agentDebugLogFiles(logDir string, after time.Time) ([]agentLogFile, error) {
+func agentDebugLogFiles(ctx context.Context, logger slog.Logger, logDir string, after time.Time) ([]agentLogFile, error) {
 	activePath := filepath.Join(logDir, "coder-agent.log")
 	activeInfo, err := os.Stat(activePath)
 	if err != nil {
@@ -119,11 +138,15 @@ func agentDebugLogFiles(logDir string, after time.Time) ([]agentLogFile, error) 
 	rotated := make([]agentLogFile, 0, len(matches))
 	for _, match := range matches {
 		base := filepath.Base(match)
-		if !coderAgentBackupLogName.MatchString(base) {
+		if !coderAgentRotatedLogName.MatchString(base) {
 			continue
 		}
 		info, err := os.Stat(match)
-		if err != nil || !info.Mode().IsRegular() || info.ModTime().Before(after) {
+		if err != nil {
+			logger.Warn(ctx, "stat rotated agent log file", slog.Error(err), slog.F("path", match))
+			continue
+		}
+		if !info.Mode().IsRegular() || info.ModTime().Before(after) {
 			continue
 		}
 		rotated = append(rotated, agentLogFile{
@@ -143,6 +166,16 @@ func agentLogBoundary(file agentLogFile) string {
 	return fmt.Sprintf("=== %s (mtime %s) ===\n", file.name, file.modTime.UTC().Format(time.RFC3339))
 }
 
-func disableWriteDeadline(w http.ResponseWriter) {
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+func writeLimitedDebugLogString(w io.Writer, s string, remaining *int64) error {
+	if int64(len(s)) > *remaining {
+		*remaining = 0
+		return nil
+	}
+	n, err := io.WriteString(w, s)
+	*remaining -= int64(n)
+	return err
+}
+
+func disableWriteDeadline(w http.ResponseWriter) error {
+	return http.NewResponseController(w).SetWriteDeadline(time.Time{})
 }

@@ -50,6 +50,13 @@ func TestAgentAPIPath(t *testing.T) {
 		require.Equal(t, "60", parsed.Query().Get("max_response_bytes"))
 	})
 
+	t.Run("debug logs zero after", func(t *testing.T) {
+		t.Parallel()
+
+		got := debugLogsPath(DebugLogsOptions{})
+		require.Equal(t, "/debug/logs", got)
+	})
+
 	t.Run("debug logs after", func(t *testing.T) {
 		t.Parallel()
 
