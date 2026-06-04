@@ -99,7 +99,7 @@ type AgentConn interface {
 	Close() error
 	ContextConfig(ctx context.Context) (ContextConfigResponse, error)
 	DebugLogs(ctx context.Context) ([]byte, error)
-	DebugLogsWithOptions(ctx context.Context, opts DebugLogsOptions) ([]byte, http.Header, error)
+	DebugLogsWithOptions(ctx context.Context, opts DebugLogsOptions) ([]byte, error)
 	DebugMagicsock(ctx context.Context) ([]byte, error)
 	DebugManifest(ctx context.Context) ([]byte, error)
 	DialContext(ctx context.Context, network string, addr string) (net.Conn, error)
@@ -450,27 +450,26 @@ type DebugLogsOptions struct {
 
 // DebugLogs returns up to the last 10MB of `/tmp/coder-agent.log`.
 func (c *agentConn) DebugLogs(ctx context.Context) ([]byte, error) {
-	bs, _, err := c.DebugLogsWithOptions(ctx, DebugLogsOptions{})
-	return bs, err
+	return c.DebugLogsWithOptions(ctx, DebugLogsOptions{})
 }
 
 // DebugLogsWithOptions returns the agent debug log with optional rotated logs.
-func (c *agentConn) DebugLogsWithOptions(ctx context.Context, opts DebugLogsOptions) ([]byte, http.Header, error) {
+func (c *agentConn) DebugLogsWithOptions(ctx context.Context, opts DebugLogsOptions) ([]byte, error) {
 	ctx, span := tracing.StartSpan(ctx)
 	defer span.End()
 	res, err := c.apiRequest(ctx, http.MethodGet, debugLogsPath(opts), nil)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("do request: %w", err)
+		return nil, xerrors.Errorf("do request: %w", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return nil, nil, codersdk.ReadBodyAsError(res)
+		return nil, codersdk.ReadBodyAsError(res)
 	}
 	bs, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, nil, xerrors.Errorf("read response body: %w", err)
+		return nil, xerrors.Errorf("read response body: %w", err)
 	}
-	return bs, res.Header.Clone(), nil
+	return bs, nil
 }
 
 func debugLogsPath(opts DebugLogsOptions) string {

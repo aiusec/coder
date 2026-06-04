@@ -17,18 +17,19 @@ import (
 	reflect "reflect"
 	time "time"
 
-	slog "cdr.dev/slog/v3"
-	codersdk "github.com/coder/coder/v2/codersdk"
-	healthsdk "github.com/coder/coder/v2/codersdk/healthsdk"
-	workspacesdk "github.com/coder/coder/v2/codersdk/workspacesdk"
-	wsjson "github.com/coder/coder/v2/codersdk/wsjson"
-	tailnet "github.com/coder/coder/v2/tailnet"
 	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 	ssh "golang.org/x/crypto/ssh"
 	gonet "gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	ipnstate "tailscale.com/ipn/ipnstate"
 	speedtest "tailscale.com/net/speedtest"
+
+	slog "cdr.dev/slog/v3"
+	codersdk "github.com/coder/coder/v2/codersdk"
+	healthsdk "github.com/coder/coder/v2/codersdk/healthsdk"
+	workspacesdk "github.com/coder/coder/v2/codersdk/workspacesdk"
+	wsjson "github.com/coder/coder/v2/codersdk/wsjson"
+	tailnet "github.com/coder/coder/v2/tailnet"
 )
 
 // MockAgentConn is a mock of AgentConn interface.
@@ -144,13 +145,12 @@ func (mr *MockAgentConnMockRecorder) DebugLogs(ctx any) *gomock.Call {
 }
 
 // DebugLogsWithOptions mocks base method.
-func (m *MockAgentConn) DebugLogsWithOptions(ctx context.Context, opts workspacesdk.DebugLogsOptions) ([]byte, http.Header, error) {
+func (m *MockAgentConn) DebugLogsWithOptions(ctx context.Context, opts workspacesdk.DebugLogsOptions) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DebugLogsWithOptions", ctx, opts)
 	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(http.Header)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DebugLogsWithOptions indicates an expected call of DebugLogsWithOptions.

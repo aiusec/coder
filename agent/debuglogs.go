@@ -15,13 +15,9 @@ import (
 	"golang.org/x/xerrors"
 
 	"cdr.dev/slog/v3"
-	"github.com/coder/coder/v2/codersdk"
 )
 
-const (
-	debugLogsActiveLimitBytes  = 10 * 1024 * 1024
-	debugLogsRotatedLimitBytes = 100 * 1024 * 1024
-)
+const debugLogsActiveLimitBytes = 10 * 1024 * 1024
 
 var coderAgentBackupLogName = regexp.MustCompile(`^coder-agent-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}\.log$`)
 
@@ -29,7 +25,6 @@ type agentLogFile struct {
 	path    string
 	name    string
 	modTime time.Time
-	size    int64
 }
 
 func (a *agent) HandleHTTPDebugLogs(w http.ResponseWriter, r *http.Request) {
@@ -51,38 +46,26 @@ func (a *agent) HandleHTTPDebugLogs(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprintf(w, "could not find log files: %s", err)
 		return
 	}
-	truncated := agentLogFilesSize(files) > debugLogsRotatedLimitBytes
-	if truncated {
-		w.Header().Set(codersdk.SupportBundleLogsTruncatedHeader, "true")
-	}
-
 	w.WriteHeader(http.StatusOK)
-	remaining := int64(debugLogsRotatedLimitBytes)
 	for i, file := range files {
-		if remaining <= 0 {
-			break
-		}
 		if i > 0 {
-			if !writeLimitedString(w, "\n", &remaining) {
-				break
-			}
+			_, _ = io.WriteString(w, "\n")
 		}
-		boundary := agentLogBoundary(file)
-		if !writeLimitedString(w, boundary, &remaining) {
-			break
-		}
+		_, _ = io.WriteString(w, agentLogBoundary(file))
 		f, err := os.Open(file.path)
 		if err != nil {
 			a.logger.Warn(r.Context(), "open agent log file", slog.Error(err), slog.F("path", file.path))
 			continue
 		}
-		n, err := io.Copy(w, io.LimitReader(f, remaining))
-		_ = f.Close()
+		err = func() error {
+			defer f.Close()
+			_, err = io.Copy(w, f)
+			return err
+		}()
 		if err != nil && !errors.Is(err, io.EOF) {
 			a.logger.Error(r.Context(), "read agent log file", slog.Error(err), slog.F("path", file.path))
 			return
 		}
-		remaining -= n
 	}
 }
 
@@ -127,7 +110,6 @@ func agentDebugLogFiles(logDir string, after time.Time) ([]agentLogFile, error) 
 		path:    activePath,
 		name:    filepath.Base(activePath),
 		modTime: activeInfo.ModTime(),
-		size:    activeInfo.Size(),
 	}}
 
 	matches, err := filepath.Glob(filepath.Join(logDir, "coder-agent-*.log"))
@@ -148,7 +130,6 @@ func agentDebugLogFiles(logDir string, after time.Time) ([]agentLogFile, error) 
 			path:    match,
 			name:    base,
 			modTime: info.ModTime(),
-			size:    info.Size(),
 		})
 	}
 	slices.SortFunc(rotated, func(a, b agentLogFile) int {
@@ -160,30 +141,6 @@ func agentDebugLogFiles(logDir string, after time.Time) ([]agentLogFile, error) 
 
 func agentLogBoundary(file agentLogFile) string {
 	return fmt.Sprintf("=== %s (mtime %s) ===\n", file.name, file.modTime.UTC().Format(time.RFC3339))
-}
-
-func agentLogFilesSize(files []agentLogFile) int64 {
-	var size int64
-	for i, file := range files {
-		if i > 0 {
-			size++
-		}
-		size += int64(len(agentLogBoundary(file)))
-		size += file.size
-	}
-	return size
-}
-
-func writeLimitedString(w io.Writer, s string, remaining *int64) bool {
-	if *remaining <= 0 {
-		return false
-	}
-	if int64(len(s)) > *remaining {
-		s = s[:int(*remaining)]
-	}
-	_, _ = io.WriteString(w, s)
-	*remaining -= int64(len(s))
-	return *remaining > 0
 }
 
 func disableWriteDeadline(w http.ResponseWriter) {

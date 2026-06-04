@@ -101,10 +101,6 @@ const (
 
 	// EntitlementsWarnings contains active warnings for the user's entitlements.
 	EntitlementsWarningHeader = "X-Coder-Entitlements-Warning"
-
-	// SupportBundleLogsTruncatedHeader is set when support bundle log collection
-	// reached a size cap and omitted some logs.
-	SupportBundleLogsTruncatedHeader = "X-Coder-Logs-Truncated"
 )
 
 // loggableMimeTypes is a list of MIME types that are safe to log

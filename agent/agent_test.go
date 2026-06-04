@@ -3727,32 +3727,6 @@ func TestAgent_DebugServer(t *testing.T) {
 		defer res.Body.Close()
 		require.Equal(t, http.StatusBadRequest, res.StatusCode)
 	})
-
-	//nolint:paralleltest // This subtest mutates the shared logDir.
-	t.Run("LogsIncludeRotatedTruncationHeader", func(t *testing.T) {
-		ctx := testutil.Context(t, testutil.WaitLong)
-		bigRotatedLogPath := filepath.Join(logDir, "coder-agent-2026-05-18T00-00-00.000.log")
-		bigRotatedFile, err := os.Create(bigRotatedLogPath)
-		require.NoError(t, err)
-		_, err = bigRotatedFile.WriteString("huge rotated log\n")
-		require.NoError(t, err)
-		require.NoError(t, bigRotatedFile.Truncate(100*1024*1024+1))
-		require.NoError(t, bigRotatedFile.Close())
-		now := time.Now()
-		require.NoError(t, os.Chtimes(bigRotatedLogPath, now, now))
-		t.Cleanup(func() {
-			require.NoError(t, os.Remove(bigRotatedLogPath))
-		})
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/debug/logs?after="+now.Add(-time.Minute).Format(time.RFC3339Nano), nil)
-		require.NoError(t, err)
-
-		res, err := srv.Client().Do(req)
-		require.NoError(t, err)
-		defer res.Body.Close()
-		require.Equal(t, http.StatusOK, res.StatusCode)
-		require.Equal(t, "true", res.Header.Get(codersdk.SupportBundleLogsTruncatedHeader))
-	})
 }
 
 func TestAgent_ScriptLogging(t *testing.T) {
