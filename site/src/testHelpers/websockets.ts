@@ -194,10 +194,15 @@ export function mockDynamicParameterWebSocket(
 			mockWebSocket.addEventListener("close", () => {
 				callbacks.onClose();
 			});
-			mockPublisher.publishOpen(new Event("open"));
-			mockPublisher.publishMessage(
-				new MessageEvent("message", { data: JSON.stringify(message) }),
-			);
+			// Wait a tick before publishing messages, otherwise we can synchronously
+			// fire off responses before the caller has a chance to store the web
+			// socket and use it in the message handler.
+			setTimeout(() => {
+				mockPublisher.publishOpen(new Event("open"));
+				mockPublisher.publishMessage(
+					new MessageEvent("message", { data: JSON.stringify(message) }),
+				);
+			}, 0);
 
 			return mockWebSocket;
 		},
