@@ -1944,6 +1944,25 @@ export const MockTemplateVersionParameter6: TypesGen.TemplateVersionParameter =
 		ephemeral: true,
 	};
 
+// Not required and the default is a blank string.
+export const MockTemplateVersionParameter7: TypesGen.TemplateVersionParameter =
+	{
+		name: "seventh_parameter",
+		type: "string",
+		form_type: "input",
+		description: "This is seventh parameter",
+		description_plaintext: "Markdown: This is seventh parameter",
+		default_value: "",
+		mutable: true,
+		icon: "/icon/folder.svg",
+		options: [],
+		validation_min: 1,
+		validation_max: 10,
+		validation_monotonic: "decreasing",
+		required: false,
+		ephemeral: false,
+	};
+
 export const MockTemplateVersionVariable1: TypesGen.TemplateVersionVariable = {
 	name: "first_variable",
 	description: "This is first variable.",
@@ -3419,6 +3438,12 @@ export const MockWorkspaceBuildParameter5: TypesGen.WorkspaceBuildParameter = {
 	value: "5",
 };
 
+// Has a blank value.
+export const MockWorkspaceBuildParameter7: TypesGen.WorkspaceBuildParameter = {
+	name: MockTemplateVersionParameter7.name,
+	value: "",
+};
+
 export const MockPreviewParameter: TypesGen.PreviewParameter = {
 	name: "parameter1",
 	display_name: "Parameter 1",
@@ -3436,6 +3461,41 @@ export const MockPreviewParameter: TypesGen.PreviewParameter = {
 	icon: "",
 	styling: {},
 	order: 0,
+};
+
+// A text parameter that is required and mutable.  Maps to
+// MockTemplateVersionParameter1 and MockWorkspaceBuildParameter1.
+export const MockPreviewParameter1: TypesGen.PreviewParameter = {
+	...MockPreviewParameter,
+	name: MockTemplateVersionParameter1.name,
+	display_name: MockTemplateVersionParameter1.name,
+	default_value: {
+		valid: true,
+		value: MockTemplateVersionParameter1.default_value,
+	},
+	value: { valid: true, value: MockTemplateVersionParameter1.default_value },
+};
+
+// A number parameter that is required and mutable.  Maps to
+// MockTemplateVersionParameter2 and MockWorkspaceBuildParameter2.
+export const MockPreviewParameter2: TypesGen.PreviewParameter = {
+	...MockPreviewParameter,
+	name: MockTemplateVersionParameter2.name,
+	display_name: MockTemplateVersionParameter2.name,
+	default_value: {
+		valid: true,
+		value: MockTemplateVersionParameter2.default_value,
+	},
+	value: { valid: true, value: MockTemplateVersionParameter2.default_value },
+};
+
+// A text parameter that is mutable, not required, and has a blank value.  Maps
+// to MockTemplateVersionParameter7 and MockWorkspaceBuildParameter7.
+export const MockPreviewParameter7: TypesGen.PreviewParameter = {
+	...MockPreviewParameter,
+	name: MockTemplateVersionParameter7.name,
+	display_name: MockTemplateVersionParameter7.name,
+	required: false,
 };
 
 export const MockDropdownParameter: TypesGen.PreviewParameter = {
