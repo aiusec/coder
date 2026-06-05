@@ -446,10 +446,8 @@ func (c *agentConn) DebugManifest(ctx context.Context) ([]byte, error) {
 
 // DebugLogsOptions configures an agent debug log request.
 type DebugLogsOptions struct {
-	// After, when non-zero, includes rotated log files whose modification
-	// time is at or after this timestamp with a 100 MiB aggregate cap. The
-	// active log is always included. A zero value returns only the active log
-	// with a 10 MiB cap.
+	// After includes rotated log files modified at or after this timestamp.
+	// The active log is always included.
 	After time.Time
 }
 
@@ -458,10 +456,9 @@ func (c *agentConn) DebugLogs(ctx context.Context) ([]byte, error) {
 	return c.DebugLogsWithOptions(ctx, DebugLogsOptions{})
 }
 
-// DebugLogsWithOptions returns agent debug logs. When opts.After is set, the
-// response includes the active log followed by any rotated log files modified at
-// or after that time, separated by boundary markers and capped at 100 MiB. When
-// opts.After is zero, only the active log is returned with a 10 MiB cap.
+// DebugLogsWithOptions returns agent debug logs. A zero After returns the
+// active log with a 10 MiB cap. A non-zero After also returns matching rotated
+// logs with a 100 MiB cap.
 func (c *agentConn) DebugLogsWithOptions(ctx context.Context, opts DebugLogsOptions) ([]byte, error) {
 	ctx, span := tracing.StartSpan(ctx)
 	defer span.End()

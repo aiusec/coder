@@ -41,7 +41,7 @@ func (a *agent) HandleHTTPDebugLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := disableWriteDeadline(w); err != nil {
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
 		a.logger.Warn(r.Context(), "disable debug log write deadline", slog.Error(err))
 	}
 	files, err := agentDebugLogFiles(r.Context(), a.logger, a.logDir, after)
@@ -51,7 +51,6 @@ func (a *agent) HandleHTTPDebugLogs(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprintf(w, "could not find log files: %s", err)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
 	remaining := int64(debugLogsWithRotatedLimitBytes)
 	wroteAny := false
 	for _, file := range files {
@@ -60,8 +59,17 @@ func (a *agent) HandleHTTPDebugLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		f, err := os.Open(file.path)
 		if err != nil {
-			a.logger.Warn(r.Context(), "open agent log file", slog.Error(err), slog.F("path", file.path))
+			if !wroteAny {
+				a.logger.Error(r.Context(), "open agent log file", slog.Error(err), slog.F("path", file.path))
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = fmt.Fprintf(w, "could not open log file: %s", err)
+				return
+			}
+			a.logger.Warn(r.Context(), "open rotated agent log file", slog.Error(err), slog.F("path", file.path))
 			continue
+		}
+		if !wroteAny {
+			w.WriteHeader(http.StatusOK)
 		}
 		copyErr := func() error {
 			defer f.Close()
@@ -131,26 +139,27 @@ func agentDebugLogFiles(ctx context.Context, logger slog.Logger, logDir string, 
 		modTime: activeInfo.ModTime(),
 	}}
 
-	matches, err := filepath.Glob(filepath.Join(logDir, "coder-agent-*.log"))
+	entries, err := os.ReadDir(logDir)
 	if err != nil {
-		return nil, xerrors.Errorf("glob rotated logs: %w", err)
+		return nil, xerrors.Errorf("read log directory: %w", err)
 	}
-	rotated := make([]agentLogFile, 0, len(matches))
-	for _, match := range matches {
-		base := filepath.Base(match)
+	rotated := make([]agentLogFile, 0, len(entries))
+	for _, entry := range entries {
+		base := entry.Name()
 		if !coderAgentRotatedLogPattern.MatchString(base) {
 			continue
 		}
-		info, err := os.Stat(match)
+		path := filepath.Join(logDir, base)
+		info, err := os.Stat(path)
 		if err != nil {
-			logger.Warn(ctx, "stat rotated agent log file", slog.Error(err), slog.F("path", match))
+			logger.Warn(ctx, "stat rotated agent log file", slog.Error(err), slog.F("path", path))
 			continue
 		}
 		if !info.Mode().IsRegular() || info.ModTime().Before(after) {
 			continue
 		}
 		rotated = append(rotated, agentLogFile{
-			path:    match,
+			path:    path,
 			name:    base,
 			modTime: info.ModTime(),
 		})
@@ -174,8 +183,4 @@ func writeLimitedDebugLogString(w io.Writer, s string, remaining *int64) error {
 	n, err := io.WriteString(w, s)
 	*remaining -= int64(n)
 	return err
-}
-
-func disableWriteDeadline(w http.ResponseWriter) error {
-	return http.NewResponseController(w).SetWriteDeadline(time.Time{})
 }

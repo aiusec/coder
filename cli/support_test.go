@@ -119,8 +119,12 @@ func TestSupportBundle(t *testing.T) {
 
 		rotatedPath := filepath.Join(tempDir, "coder-agent-2026-05-18T00-00-00.000.log")
 		require.NoError(t, os.WriteFile(rotatedPath, []byte("rotated log"), 0o600))
+		oldRotatedPath := filepath.Join(tempDir, "coder-agent-2026-05-17T00-00-00.000.log")
+		require.NoError(t, os.WriteFile(oldRotatedPath, []byte("old rotated log"), 0o600))
 		now := time.Now()
 		require.NoError(t, os.Chtimes(rotatedPath, now, now))
+		oldRotatedTime := now.Add(-48 * time.Hour)
+		require.NoError(t, os.Chtimes(oldRotatedPath, oldRotatedTime, oldRotatedTime))
 
 		agt := agenttest.New(t, client.URL, workspaceWithRotatedAgentLogs.AgentToken, func(o *agent.Options) {
 			o.LogDir = tempDir
@@ -149,8 +153,10 @@ func TestSupportBundle(t *testing.T) {
 			}
 			found = true
 			bs := readBytesFromZip(t, f)
-			require.Contains(t, string(bs), "hello from the agent")
-			require.Contains(t, string(bs), "rotated log")
+			body := string(bs)
+			require.Contains(t, body, "hello from the agent")
+			require.Contains(t, body, "rotated log")
+			require.NotContains(t, body, "old rotated log")
 		}
 		require.True(t, found, "expected agent/logs.txt in bundle")
 	})

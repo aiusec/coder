@@ -3519,8 +3519,9 @@ func TestAgent_DebugServer(t *testing.T) {
 	oldRotatedLogPath := filepath.Join(logDir, "coder-agent-2026-05-17T19-00-00.000.log")
 	require.NoError(t, os.WriteFile(newRotatedLogPath, []byte("new rotated log"), 0o600))
 	require.NoError(t, os.WriteFile(oldRotatedLogPath, []byte("old rotated log"), 0o600))
-	newRotatedModTime := time.Now().Add(-time.Minute)
-	oldRotatedModTime := time.Now().Add(-48 * time.Hour)
+	now := time.Now()
+	newRotatedModTime := now.Add(-time.Minute)
+	oldRotatedModTime := now.Add(-48 * time.Hour)
 	require.NoError(t, os.Chtimes(newRotatedLogPath, newRotatedModTime, newRotatedModTime))
 	require.NoError(t, os.Chtimes(oldRotatedLogPath, oldRotatedModTime, oldRotatedModTime))
 	derpMap, _ := tailnettest.RunDERPAndSTUN(t)
@@ -3677,7 +3678,7 @@ func TestAgent_DebugServer(t *testing.T) {
 		t.Parallel()
 
 		ctx := testutil.Context(t, testutil.WaitLong)
-		url := srv.URL + "/debug/logs?after=" + time.Now().Format(time.RFC3339Nano)
+		url := srv.URL + "/debug/logs?after=" + newRotatedModTime.Add(time.Minute).Format(time.RFC3339Nano)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		require.NoError(t, err)
 
