@@ -8,7 +8,9 @@ import {
 	MockDynamicParametersResponse,
 	MockDynamicParametersResponseWithError,
 	MockPermissions,
-	MockPreviewParameter,
+	MockPreviewParameter1,
+	MockPreviewParameter2,
+	MockPreviewParameter7,
 	MockSliderParameter,
 	MockTemplate,
 	MockTemplateVersion,
@@ -214,81 +216,275 @@ describe("CreateWorkspacePage", () => {
 			});
 		});
 
-		it("does not clobber user values", async () => {
+		it("does not clobber user input", async () => {
 			const [, mockPublisher] = mockDynamicParameterWebSocket([
-				MockPreviewParameter,
+				MockPreviewParameter1,
+				MockPreviewParameter7,
 			]);
 
 			renderCreateWorkspacePage();
 			await waitForLoaderToBeRemoved();
 
+			// Remove one value and fill out the other. Make sure the removal is first
+			// to test that blank values are preserved and not just being sent once
+			// due to being the last modified.
 			const form = screen.getByTestId("form");
 			const input = await within(form).findByRole("textbox", {
-				name: /parameter 1/i,
+				name: new RegExp(MockPreviewParameter1.display_name, "i"),
 			});
 			await userEvent.clear(input);
-			await userEvent.type(input, "hi there hello");
-
-			await waitFor(() => {
-				expect(
-					within(form).getByDisplayValue("hi there hello"),
-				).toBeInTheDocument();
+			const input2 = await within(form).findByRole("textbox", {
+				name: new RegExp(MockPreviewParameter7.display_name, "i"),
 			});
+			await userEvent.clear(input2);
+			await userEvent.type(input2, "hi there hello");
 
-			// Simulate a stale response.
+			// Simulate a slow/stale response.
 			await act(async () => {
 				mockPublisher.publishMessage(
 					new MessageEvent("message", {
 						data: JSON.stringify({
 							id: 1,
-							parameters: [MockPreviewParameter, MockValidationParameter],
-						}),
-					}),
-				);
-			});
-
-			// Should have the new field, but keep the existing user-filled values.
-			await waitFor(() => {
-				expect(within(form).getByDisplayValue("50")).toBeInTheDocument();
-				expect(
-					within(form).getByDisplayValue("hi there hello"),
-				).toBeInTheDocument();
-			});
-		});
-
-		it("does not clobber auto-filled values", async () => {
-			const [, mockPublisher] = mockDynamicParameterWebSocket([
-				MockPreviewParameter,
-				MockSliderParameter,
-			]);
-
-			renderCreateWorkspacePage(
-				`/templates/${MockTemplate.name}/workspace?param.cpu_count=44&param.parameter1=auto`,
-			);
-			await waitForLoaderToBeRemoved();
-
-			// Simulate a stale response.
-			await act(async () => {
-				mockPublisher.publishMessage(
-					new MessageEvent("message", {
-						data: JSON.stringify({
-							id: 2,
 							parameters: [
-								MockPreviewParameter,
-								MockSliderParameter,
-								MockValidationParameter,
+								MockPreviewParameter1,
+								MockPreviewParameter7,
+								// Add a new field to test the message is actually received.
+								MockPreviewParameter2,
 							],
 						}),
 					}),
 				);
 			});
 
-			// Should have the new field, but keep the existing auto-filled values.
+			// The last message from the client should not use the stale values.
+			await waitFor(() => {
+				const lastMessage =
+					mockPublisher.clientSentData[mockPublisher.clientSentData.length - 1];
+				expect(lastMessage).toBeDefined();
+				expect(JSON.parse(lastMessage as string)).toEqual(
+					expect.objectContaining({
+						inputs: {
+							[MockPreviewParameter1.name]: "",
+							[MockPreviewParameter7.name]: "hi there hello",
+						},
+					}),
+				);
+			});
+
+			// The touched fields on the page should not have been updated.
+			await waitFor(() => {
+				const field1 = within(form).getByTestId(
+					`parameter-field-${MockPreviewParameter1.name}`,
+				);
+				expect(within(field1).getByDisplayValue("")).toBeInTheDocument();
+
+				const field2 = within(form).getByTestId(
+					`parameter-field-${MockPreviewParameter7.name}`,
+				);
+				expect(
+					within(field2).getByDisplayValue("hi there hello"),
+				).toBeInTheDocument();
+
+				const field3 = within(form).getByTestId(
+					`parameter-field-${MockPreviewParameter2.name}`,
+				);
+				expect(
+					within(field3).getByDisplayValue(MockPreviewParameter2.value.value),
+				).toBeInTheDocument();
+			});
+
+			// Respond with the matching values.
+			await act(async () => {
+				mockPublisher.publishMessage(
+					new MessageEvent("message", {
+						data: JSON.stringify({
+							id: 2,
+							parameters: [
+								{
+									...MockPreviewParameter1,
+									value: { valid: true, value: "" },
+									required: false,
+								},
+								{
+									...MockPreviewParameter7,
+									value: { valid: true, value: "hi there hello" },
+								},
+								MockPreviewParameter2,
+							],
+						}),
+					}),
+				);
+			});
+
+			// Need a name to submit.
+			const nameInput = screen.getByRole("textbox", {
+				name: /workspace name/i,
+			});
+			await userEvent.clear(nameInput);
+			await userEvent.type(nameInput, "my-filled-workspace");
+
+			// Submit the form.
+			const createButton = within(form).getByRole("button", {
+				name: /create workspace/i,
+			});
+			await waitFor(() => expect(createButton).toBeEnabled());
+			await userEvent.click(createButton);
+
+			// Again the touched fields should be used as they are.
+			await waitFor(() => {
+				expect(API.createWorkspace).toHaveBeenCalledWith(
+					MockUserOwner.id,
+					expect.objectContaining({
+						name: "my-filled-workspace",
+						template_version_id: MockTemplate.active_version_id,
+						template_id: undefined,
+						rich_parameter_values: [
+							expect.objectContaining({
+								name: MockPreviewParameter1.name,
+								value: "",
+							}),
+							expect.objectContaining({
+								name: MockPreviewParameter7.name,
+								value: "hi there hello",
+							}),
+							expect.objectContaining({
+								name: MockPreviewParameter2.name,
+								value: MockPreviewParameter2.value.value,
+							}),
+						],
+					}),
+				);
+			});
+		});
+
+		it("does not clobber auto-filled values", async () => {
+			const [, mockPublisher] = mockDynamicParameterWebSocket([
+				MockPreviewParameter1,
+				MockPreviewParameter7,
+			]);
+
+			// Make one field blank and the other filled out.
+			renderCreateWorkspacePage(
+				`/templates/${MockTemplate.name}/workspace?param.${MockPreviewParameter1.name}=&param.${MockPreviewParameter7.name}=hi there hello`,
+			);
+			await waitForLoaderToBeRemoved();
+
+			// Simulate a slow/stale response.
+			await act(async () => {
+				mockPublisher.publishMessage(
+					new MessageEvent("message", {
+						data: JSON.stringify({
+							id: 1,
+							parameters: [
+								MockPreviewParameter1,
+								MockPreviewParameter7,
+								// Add a new field to test the message is actually received.
+								MockPreviewParameter2,
+							],
+						}),
+					}),
+				);
+			});
+
+			// The initial message from the client should not use the stale values.
+			await waitFor(() => {
+				const lastMessage =
+					mockPublisher.clientSentData[mockPublisher.clientSentData.length - 1];
+				expect(lastMessage).toBeDefined();
+				expect(JSON.parse(lastMessage as string)).toEqual(
+					expect.objectContaining({
+						inputs: {
+							[MockPreviewParameter1.name]: "",
+							[MockPreviewParameter7.name]: "hi there hello",
+						},
+					}),
+				);
+			});
+
+			// The auto-filled fields on the page should not have been updated.
 			const form = screen.getByTestId("form");
 			await waitFor(() => {
-				expect(within(form).getByDisplayValue("50")).toBeInTheDocument();
-				expect(within(form).getByDisplayValue("44")).toBeInTheDocument();
-				expect(within(form).getByDisplayValue("auto")).toBeInTheDocument();
+				const field1 = within(form).getByTestId(
+					`parameter-field-${MockPreviewParameter1.name}`,
+				);
+				expect(within(field1).getByDisplayValue("")).toBeInTheDocument();
+
+				const field2 = within(form).getByTestId(
+					`parameter-field-${MockPreviewParameter7.name}`,
+				);
+				expect(
+					within(field2).getByDisplayValue("hi there hello"),
+				).toBeInTheDocument();
+
+				const field3 = within(form).getByTestId(
+					`parameter-field-${MockPreviewParameter2.name}`,
+				);
+				expect(
+					within(field3).getByDisplayValue(MockPreviewParameter2.value.value),
+				).toBeInTheDocument();
+			});
+
+			// Respond with the matching values.
+			await act(async () => {
+				mockPublisher.publishMessage(
+					new MessageEvent("message", {
+						data: JSON.stringify({
+							id: 2,
+							parameters: [
+								{
+									...MockPreviewParameter1,
+									value: { valid: true, value: "" },
+									required: false,
+								},
+								{
+									...MockPreviewParameter7,
+									value: { valid: true, value: "hi there hello" },
+								},
+								MockPreviewParameter2,
+							],
+						}),
+					}),
+				);
+			});
+
+			// Need a name to submit.
+			const nameInput = screen.getByRole("textbox", {
+				name: /workspace name/i,
+			});
+			await userEvent.clear(nameInput);
+			await userEvent.type(nameInput, "my-autofilled-workspace");
+
+			// Submit the form.
+			const createButton = within(form).getByRole("button", {
+				name: /create workspace/i,
+			});
+			await waitFor(() => expect(createButton).toBeEnabled());
+			await userEvent.click(createButton);
+
+			// Again the touched fields should be used they are.
+			await waitFor(() => {
+				expect(API.createWorkspace).toHaveBeenCalledWith(
+					MockUserOwner.id,
+					expect.objectContaining({
+						name: "my-autofilled-workspace",
+						template_version_id: MockTemplate.active_version_id,
+						template_id: undefined,
+						rich_parameter_values: [
+							expect.objectContaining({
+								name: MockPreviewParameter1.name,
+								value: "",
+							}),
+							expect.objectContaining({
+								name: MockPreviewParameter7.name,
+								value: "hi there hello",
+							}),
+							expect.objectContaining({
+								name: MockPreviewParameter2.name,
+								value: MockPreviewParameter2.value.value,
+							}),
+						],
+					}),
+				);
 			});
 		});
 	});

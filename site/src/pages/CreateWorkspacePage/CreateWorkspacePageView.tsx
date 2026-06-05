@@ -251,7 +251,7 @@ export const CreateWorkspacePageView: FC<CreateWorkspacePageViewProps> = ({
 					!parameters.some((p) => p.parameter.name === fieldName)
 				) {
 					const param = formParameters.find((p) => p.name === fieldName);
-					if (param?.value) {
+					if (param?.value !== undefined) {
 						formInputs[fieldName] = param.value;
 					}
 				}
