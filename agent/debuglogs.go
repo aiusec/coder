@@ -22,7 +22,7 @@ const (
 	debugLogsWithRotatedLimitBytes = 100 * 1024 * 1024
 )
 
-var coderAgentRotatedLogName = regexp.MustCompile(`^coder-agent-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}\.log$`)
+var coderAgentRotatedLogPattern = regexp.MustCompile(`^coder-agent-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}\.log$`)
 
 type agentLogFile struct {
 	path    string
@@ -138,7 +138,7 @@ func agentDebugLogFiles(ctx context.Context, logger slog.Logger, logDir string, 
 	rotated := make([]agentLogFile, 0, len(matches))
 	for _, match := range matches {
 		base := filepath.Base(match)
-		if !coderAgentRotatedLogName.MatchString(base) {
+		if !coderAgentRotatedLogPattern.MatchString(base) {
 			continue
 		}
 		info, err := os.Stat(match)
