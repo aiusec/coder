@@ -81,7 +81,7 @@ const WorkspaceParametersPageExperimental: FC = () => {
 
 		const initialParamsToSend: Record<string, string> = {};
 		for (const param of autofillParameters) {
-			if (param.name && param.value) {
+			if (param.name && param.value !== undefined) {
 				initialParamsToSend[param.name] = param.value;
 			}
 		}
