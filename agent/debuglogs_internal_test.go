@@ -48,7 +48,11 @@ func TestHandleHTTPDebugLogsWithAfterOpenFailure(t *testing.T) {
 		t.Skip("unix sockets only")
 	}
 
-	logDir := t.TempDir()
+	logDir, err := os.MkdirTemp("/tmp", "coder-debuglogs-")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.RemoveAll(logDir)
+	})
 	activePath := filepath.Join(logDir, "coder-agent.log")
 	listener, err := net.Listen("unix", activePath)
 	require.NoError(t, err)
