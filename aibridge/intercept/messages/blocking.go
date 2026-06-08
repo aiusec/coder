@@ -112,8 +112,14 @@ func (i *BlockingInterception) ProcessRequest(w http.ResponseWriter, r *http.Req
 
 	for {
 		// TODO add outer loop span (https://github.com/coder/aibridge/issues/67)
+
+		// Rebuilt per iteration: i.reqPayload mutates when an agentic
+		// continuation appends tool results, so withBody must reflect
+		// the latest payload on every upstream call.
+		callOpts := []option.RequestOption{i.withBody()}
+
 		var keyAttempts int
-		resp, keyAttempts, err = i.newMessage(ctx, svc)
+		resp, keyAttempts, err = i.newMessage(ctx, svc, callOpts)
 		totalKeyAttempts += keyAttempts
 		if err != nil {
 			if eventstream.IsConnError(err) {
@@ -352,12 +358,12 @@ func (i *BlockingInterception) ProcessRequest(w http.ResponseWriter, r *http.Req
 // newMessage routes by credential type, returning the upstream message, the
 // number of key attempts made for this call, and any error. Centralized
 // credentials fail over across the key pool, while BYOK makes a single attempt.
-func (i *BlockingInterception) newMessage(ctx context.Context, svc anthropic.MessageService) (*anthropic.Message, int, error) {
+func (i *BlockingInterception) newMessage(ctx context.Context, svc anthropic.MessageService, opts []option.RequestOption) (*anthropic.Message, int, error) {
 	switch i.cred.Kind() {
 	case intercept.CredentialKindCentralized:
-		return i.newMessageWithKeyFailover(ctx, svc)
+		return i.newMessageWithKeyFailover(ctx, svc, opts)
 	case intercept.CredentialKindBYOK:
-		msg, err := i.newMessageWithKey(ctx, svc)
+		msg, err := i.newMessageWithKey(ctx, svc, opts...)
 		return msg, 0, err
 	default:
 		return nil, 0, xerrors.New("no credential configured")
@@ -365,11 +371,10 @@ func (i *BlockingInterception) newMessage(ctx context.Context, svc anthropic.Mes
 }
 
 // newMessageWithKey performs a single upstream call.
-func (i *BlockingInterception) newMessageWithKey(ctx context.Context, svc anthropic.MessageService, extraOpts ...option.RequestOption) (_ *anthropic.Message, outErr error) {
+func (i *BlockingInterception) newMessageWithKey(ctx context.Context, svc anthropic.MessageService, opts ...option.RequestOption) (_ *anthropic.Message, outErr error) {
 	_, span := i.tracer.Start(ctx, "Intercept.ProcessRequest.Upstream", trace.WithAttributes(tracing.InterceptionAttributesFromContext(ctx)...))
 	defer tracing.EndSpanErr(span, &outErr)
 
-	opts := append([]option.RequestOption{i.withBody()}, extraOpts...)
 	return svc.New(ctx, anthropic.MessageNewParams{}, opts...)
 }
 
@@ -378,12 +383,12 @@ func (i *BlockingInterception) newMessageWithKey(ctx context.Context, svc anthro
 // 429 and permanent on 401/403. Errors that aren't key-specific don't trigger
 // failover and are returned to the caller. It returns the upstream message,
 // the number of key attempts made for this call, and any error.
-func (i *BlockingInterception) newMessageWithKeyFailover(ctx context.Context, svc anthropic.MessageService) (*anthropic.Message, int, error) {
+func (i *BlockingInterception) newMessageWithKeyFailover(ctx context.Context, svc anthropic.MessageService, opts []option.RequestOption) (*anthropic.Message, int, error) {
 	centralized, ok := intercept.AsCentralized(i.cred)
 	if !ok {
 		// Centralized but pool-less: Bedrock, which signs via AWS. A single
 		// attempt with no failover.
-		msg, err := i.newMessageWithKey(ctx, svc)
+		msg, err := i.newMessageWithKey(ctx, svc, opts...)
 		return msg, 0, err
 	}
 	walker := centralized.Pool.Walker()
@@ -396,12 +401,14 @@ func (i *BlockingInterception) newMessageWithKeyFailover(ctx context.Context, sv
 		i.logger.Debug(ctx, "using centralized api key",
 			slog.F("credential_hint", i.cred.Hint()), slog.F("credential_length", i.cred.Length()))
 
-		msg, err := i.newMessageWithKey(ctx, svc,
+		requestOpts := append([]option.RequestOption{}, opts...)
+		requestOpts = append(requestOpts,
 			option.WithAPIKey(key.Value()),
 			// Disable SDK retries because the failover loop
 			// handles retries via key rotation.
 			option.WithMaxRetries(0),
 		)
+		msg, err := i.newMessageWithKey(ctx, svc, requestOpts...)
 		// Key-specific failure: try the next key.
 		if i.markKeyOnError(ctx, key, err) {
 			continue

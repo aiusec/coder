@@ -179,7 +179,7 @@ newStream:
 			walker = centralized.Pool.Walker()
 		}
 
-		var streamOpts []option.RequestOption
+		streamOpts := []option.RequestOption{i.withBody()}
 		var currentPoolKey *keypool.Key
 		if walker != nil {
 			key, keyPoolErr := walker.Next()
@@ -696,10 +696,9 @@ func (*StreamingInterception) encodeForStream(payload []byte, typ string) []byte
 }
 
 // newStream traces svc.NewStreaming() call.
-func (i *StreamingInterception) newStream(ctx context.Context, svc anthropic.MessageService, extraOpts ...option.RequestOption) *ssestream.Stream[anthropic.MessageStreamEventUnion] {
+func (i *StreamingInterception) newStream(ctx context.Context, svc anthropic.MessageService, opts ...option.RequestOption) *ssestream.Stream[anthropic.MessageStreamEventUnion] {
 	_, span := i.tracer.Start(ctx, "Intercept.ProcessRequest.Upstream", trace.WithAttributes(tracing.InterceptionAttributesFromContext(ctx)...))
 	defer span.End()
 
-	opts := append([]option.RequestOption{i.withBody()}, extraOpts...)
 	return svc.NewStreaming(ctx, anthropic.MessageNewParams{}, opts...)
 }
