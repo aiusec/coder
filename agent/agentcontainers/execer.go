@@ -52,15 +52,31 @@ func (e *commandEnvExecer) prepare(ctx context.Context, inName string, inArgs ..
 	}
 
 	caller := "-c"
-	if runtime.GOOS == "windows" {
+	isWindows := runtime.GOOS == "windows"
+	if isWindows {
 		caller = "/c"
 	}
 	name = shell
 	for _, arg := range append([]string{inName}, inArgs...) {
-		args = append(args, fmt.Sprintf("%q", arg))
+		if isWindows {
+			// POSIX shells expand $(...), backticks, and $VAR inside the
+			// Go %q double-quoted form, letting attacker-controlled
+			// arguments such as docker container labels execute code.
+			// Single quotes suppress all expansion on POSIX shells but are
+			// not honored by cmd.exe or PowerShell, so Windows keeps %q.
+			args = append(args, fmt.Sprintf("%q", arg))
+		} else {
+			args = append(args, shellQuote(arg))
+		}
 	}
 	args = []string{caller, strings.Join(args, " ")}
 	return name, args, dir, env
+}
+
+// shellQuote returns s as a POSIX shell single-quoted literal so the
+// receiving shell treats it verbatim.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func (e *commandEnvExecer) CommandContext(ctx context.Context, cmd string, args ...string) *exec.Cmd {

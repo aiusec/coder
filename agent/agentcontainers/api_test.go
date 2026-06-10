@@ -3923,7 +3923,8 @@ func TestAPI(t *testing.T) {
 		// Verify commands were executed through the custom shell and environment.
 		require.NotEmpty(t, fakeExec.commands, "commands should be executed")
 
-		// Want: /bin/custom-shell -c '"docker" "ps" "--all" "--quiet" "--no-trunc"'
+		// Want script: 'docker' 'ps' '--all' '--quiet' '--no-trunc' on POSIX,
+		// or "docker" "ps" "--all" "--quiet" "--no-trunc" on Windows.
 		require.Equal(t, testShell, fakeExec.commands[0][0], "custom shell should be used")
 		if runtime.GOOS == "windows" {
 			require.Equal(t, "/c", fakeExec.commands[0][1], "shell should be called with /c on Windows")
@@ -3932,7 +3933,11 @@ func TestAPI(t *testing.T) {
 		}
 		require.Len(t, fakeExec.commands[0], 3, "command should have 3 arguments")
 		require.GreaterOrEqual(t, strings.Count(fakeExec.commands[0][2], " "), 2, "command/script should have multiple arguments")
-		require.True(t, strings.HasPrefix(fakeExec.commands[0][2], `"docker" "ps"`), "command should start with \"docker\" \"ps\"")
+		if runtime.GOOS == "windows" {
+			require.True(t, strings.HasPrefix(fakeExec.commands[0][2], `"docker" "ps"`), "command should start with \"docker\" \"ps\"")
+		} else {
+			require.True(t, strings.HasPrefix(fakeExec.commands[0][2], `'docker' 'ps'`), "command should start with 'docker' 'ps'")
+		}
 
 		// Verify the environment was set on the command.
 		lastCmd := fakeExec.getLastCommand()
