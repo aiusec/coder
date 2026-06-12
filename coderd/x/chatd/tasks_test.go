@@ -114,6 +114,7 @@ func TestInterruptTask_FinishInterruptionOnly(t *testing.T) {
 	runnerID := uuid.New()
 	acquired := f.acquireChat(t, chat.ID, workerID, runnerID)
 	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
 	key := messagepartbuffer.Key{
 		ChatID:            chat.ID,
 		HistoryVersion:    acquired.HistoryVersion,
@@ -166,7 +167,9 @@ func TestInterruptTask_StaleFenceExits(t *testing.T) {
 	otherRunnerID := uuid.New()
 	f.acquireChat(t, chat.ID, otherWorkerID, otherRunnerID)
 	recorder := newTaskSideEffectRecorder()
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), recorder)
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, recorder)
 
 	err := starter.StartInterrupt(testutil.Context(t, testutil.WaitLong), chatWorkerTaskStartInput{
 		ChatID:            chat.ID,
@@ -197,7 +200,9 @@ func TestInterruptTask_MissingEpisodePersistsNilPartials(t *testing.T) {
 	f.acquireChat(t, chat.ID, workerID, runnerID)
 	interrupting := f.forceExecutionState(t, chat.ID, database.ChatStatusInterrupting, false, sql.NullTime{})
 	recorder := newTaskSideEffectRecorder()
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), recorder)
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, recorder)
 
 	err := starter.StartInterrupt(testutil.Context(t, testutil.WaitLong), chatWorkerTaskStartInput{
 		ChatID:            chat.ID,
@@ -228,6 +233,7 @@ func TestInterruptTask_BufferedPartsBecomePartialMessages(t *testing.T) {
 	runnerID := uuid.New()
 	acquired := f.acquireChat(t, chat.ID, workerID, runnerID)
 	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
 	key := messagepartbuffer.Key{ChatID: chat.ID, HistoryVersion: acquired.HistoryVersion, GenerationAttempt: acquired.GenerationAttempt}
 	require.NoError(t, buffer.CreateEpisode(key))
 	callID := "call_" + uuid.NewString()
@@ -276,7 +282,9 @@ func TestRequiresActionTimeout_ExpiredCancelsOnly(t *testing.T) {
 	acquired := f.acquireChat(t, chat.ID, workerID, runnerID)
 	expired := f.setRequiresActionDeadline(t, chat.ID, sql.NullTime{Time: time.Now().Add(-time.Minute), Valid: true})
 	recorder := newTaskSideEffectRecorder()
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), recorder)
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, recorder)
 
 	err := starter.StartRequiresActionTimeout(testutil.Context(t, testutil.WaitLong), chatWorkerTaskStartInput{
 		ChatID:                   chat.ID,
@@ -306,7 +314,9 @@ func TestRequiresActionTimeout_NullDeadlineCancelsImmediately(t *testing.T) {
 	acquired := f.acquireChat(t, chat.ID, workerID, runnerID)
 	nullDeadline := f.setRequiresActionDeadline(t, chat.ID, sql.NullTime{})
 	recorder := newTaskSideEffectRecorder()
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), recorder)
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, recorder)
 
 	err := starter.StartRequiresActionTimeout(testutil.Context(t, testutil.WaitLong), chatWorkerTaskStartInput{
 		ChatID:                   chat.ID,
@@ -335,7 +345,9 @@ func TestRequiresActionTimeout_StaleFenceExitsAfterToolResult(t *testing.T) {
 	expired := f.setRequiresActionDeadline(t, chat.ID, sql.NullTime{Time: time.Now().Add(-time.Minute), Valid: true})
 	f.forceExecutionState(t, chat.ID, database.ChatStatusRunning, false, sql.NullTime{})
 	recorder := newTaskSideEffectRecorder()
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), recorder)
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, recorder)
 
 	err := starter.StartRequiresActionTimeout(testutil.Context(t, testutil.WaitLong), chatWorkerTaskStartInput{
 		ChatID:                   chat.ID,
@@ -363,7 +375,9 @@ func TestAbandonTask_AbandonOnly(t *testing.T) {
 	runnerID := uuid.New()
 	acquired := f.acquireChat(t, chat.ID, workerID, runnerID)
 	recorder := newTaskSideEffectRecorder()
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), recorder)
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, recorder)
 
 	err := starter.StartAbandon(testutil.Context(t, testutil.WaitLong), chatWorkerTaskStartInput{
 		ChatID:         chat.ID,
@@ -395,7 +409,9 @@ func TestAbandonTask_OwnershipMismatchRequestsCleanup(t *testing.T) {
 	otherRunnerID := uuid.New()
 	latestOwner := f.acquireChat(t, chat.ID, otherWorkerID, otherRunnerID)
 	recorder := newTaskSideEffectRecorder()
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), recorder)
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, recorder)
 
 	err := starter.StartAbandon(testutil.Context(t, testutil.WaitLong), chatWorkerTaskStartInput{
 		ChatID:         chat.ID,
@@ -423,7 +439,9 @@ func TestAbandonTask_StaleStatusFenceExits(t *testing.T) {
 	acquired := f.acquireChat(t, chat.ID, workerID, runnerID)
 	f.forceExecutionState(t, chat.ID, database.ChatStatusInterrupting, false, sql.NullTime{})
 	recorder := newTaskSideEffectRecorder()
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), recorder)
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, recorder)
 
 	err := starter.StartAbandon(testutil.Context(t, testutil.WaitLong), chatWorkerTaskStartInput{
 		ChatID:         chat.ID,
@@ -451,7 +469,9 @@ func TestGenerationTask_RecordRetryState(t *testing.T) {
 	runnerID := uuid.New()
 	acquired := f.acquireChat(t, chat.ID, workerID, runnerID)
 	recorder := newTaskSideEffectRecorder()
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), recorder)
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, recorder)
 
 	attempt, _, _, closeEpisode, err := starter.beginGenerationAttempt(
 		testutil.Context(t, testutil.WaitLong),
@@ -521,7 +541,9 @@ func TestGenerationTask_RecordRetryStateUsesDurableGenerationAttempt(t *testing.
 	workerID := uuid.New()
 	runnerID := uuid.New()
 	acquired := f.acquireChat(t, chat.ID, workerID, runnerID)
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), newTaskSideEffectRecorder())
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, newTaskSideEffectRecorder())
 	machine := chatstate.NewChatMachine(f.db, f.pubsub, chat.ID)
 
 	for range 3 {
@@ -579,7 +601,9 @@ func TestGenerationTask_RecordRetryStateClearedByNextAttempt(t *testing.T) {
 	workerID := uuid.New()
 	runnerID := uuid.New()
 	acquired := f.acquireChat(t, chat.ID, workerID, runnerID)
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), newTaskSideEffectRecorder())
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, newTaskSideEffectRecorder())
 	machine := chatstate.NewChatMachine(f.db, f.pubsub, chat.ID)
 	input := chatWorkerTaskStartInput{
 		ChatID:         chat.ID,
@@ -628,7 +652,9 @@ func TestGenerationTask_RecordRetryStateStaleFenceExits(t *testing.T) {
 	workerID := uuid.New()
 	runnerID := uuid.New()
 	acquired := f.acquireChat(t, chat.ID, workerID, runnerID)
-	starter := newTestTaskStarter(t, f, messagepartbuffer.New(messagepartbuffer.Options{}), newTaskSideEffectRecorder())
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	starter := newTestTaskStarter(t, f, buffer, newTaskSideEffectRecorder())
 	machine := chatstate.NewChatMachine(f.db, f.pubsub, chat.ID)
 	attempt, _, _, closeEpisode, err := starter.beginGenerationAttempt(
 		testutil.Context(t, testutil.WaitLong),
@@ -678,7 +704,9 @@ func TestRunner_StartsRealInterruptTask(t *testing.T) {
 
 	f := newTaskTestFixture(t)
 	chat := f.createRunningChat(t)
-	worker := startRealTaskWorker(t, f, messagepartbuffer.New(messagepartbuffer.Options{}))
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	worker := startRealTaskWorker(t, f, buffer)
 	waitOwnedChat(t, f, chat.ID, worker.chatWorkerID())
 
 	interrupting := f.interruptChat(t, chat.ID)
@@ -699,7 +727,9 @@ func TestRunner_StartsRealRequiresActionTimeoutTask(t *testing.T) {
 	f := newTaskTestFixture(t)
 	chat := f.createRequiresActionChat(t)
 	f.setRequiresActionDeadline(t, chat.ID, sql.NullTime{Time: time.Now().Add(-time.Minute), Valid: true})
-	worker := startRealTaskWorker(t, f, messagepartbuffer.New(messagepartbuffer.Options{}))
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	worker := startRealTaskWorker(t, f, buffer)
 
 	testutil.Eventually(testutil.Context(t, testutil.WaitLong), t, func(ctx context.Context) bool {
 		latest, err := f.db.GetChatByID(ctx, chat.ID)
@@ -716,7 +746,9 @@ func TestRunner_StartsRealAbandonTask(t *testing.T) {
 
 	f := newTaskTestFixture(t)
 	chat := f.createRunningChat(t)
-	worker := startRealTaskWorker(t, f, messagepartbuffer.New(messagepartbuffer.Options{}))
+	buffer := messagepartbuffer.New(messagepartbuffer.Options{})
+	t.Cleanup(buffer.Close)
+	worker := startRealTaskWorker(t, f, buffer)
 	waitOwnedChat(t, f, chat.ID, worker.chatWorkerID())
 
 	updated := f.forceExecutionState(t, chat.ID, database.ChatStatusError, false, sql.NullTime{})
