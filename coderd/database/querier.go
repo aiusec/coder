@@ -235,6 +235,15 @@ type sqlcQuerier interface {
 	DeleteWorkspaceACLsByOrganization(ctx context.Context, arg DeleteWorkspaceACLsByOrganizationParams) error
 	DeleteWorkspaceAgentPortShare(ctx context.Context, arg DeleteWorkspaceAgentPortShareParams) error
 	DeleteWorkspaceAgentPortSharesByTemplate(ctx context.Context, templateID uuid.UUID) error
+	// Soft-deletes a single sub-agent (a child agent such as a devcontainer
+	// agent). Called from the DeleteSubAgent RPC when a sub-agent is torn
+	// down, which can happen mid-build without a full workspace rebuild.
+	//
+	// Agent context rows are hard-deleted for the same reason as in
+	// SoftDeletePriorWorkspaceAgents: they only describe live agents, the
+	// rebuild-time soft-delete queries skip already-deleted agents, and
+	// agents are never hard-deleted, so the rows would otherwise orphan
+	// forever.
 	DeleteWorkspaceSubAgentByID(ctx context.Context, id uuid.UUID) error
 	// Disable foreign keys and triggers for all tables.
 	// Deprecated: disable foreign keys was created to aid in migrating off

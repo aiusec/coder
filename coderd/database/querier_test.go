@@ -15068,6 +15068,7 @@ func TestSoftDeleteWorkspaceAgentsPurgesContext(t *testing.T) {
 	type buildBundle struct {
 		buildID uuid.UUID
 		agentID uuid.UUID
+		agent   database.WorkspaceAgent
 	}
 
 	newBuild := func(t *testing.T, wsID uuid.UUID, buildNumber int32) buildBundle {
@@ -15085,7 +15086,7 @@ func TestSoftDeleteWorkspaceAgentsPurgesContext(t *testing.T) {
 		})
 		resource := dbgen.WorkspaceResource(t, db, database.WorkspaceResource{JobID: job.ID})
 		agent := dbgen.WorkspaceAgent(t, db, database.WorkspaceAgent{ResourceID: resource.ID})
-		return buildBundle{buildID: build.ID, agentID: agent.ID}
+		return buildBundle{buildID: build.ID, agentID: agent.ID, agent: agent}
 	}
 
 	pushContext := func(t *testing.T, agentID uuid.UUID) {
@@ -15158,6 +15159,19 @@ func TestSoftDeleteWorkspaceAgentsPurgesContext(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, hasContext(t, a2.agentID), "other workspace agent context must remain")
 	assert.False(t, hasContext(t, b1.agentID), "deleted workspace agent context must be purged")
+
+	// Removing a sub-agent mid-build via DeleteWorkspaceSubAgentByID purges
+	// only that sub-agent's context. The rebuild-time queries skip
+	// already-deleted agents, so this is the sole cleanup opportunity.
+	c1 := newBuild(t, wsA, 3)
+	subAgent := dbgen.WorkspaceSubAgent(t, db, c1.agent, database.WorkspaceAgent{})
+	pushContext(t, c1.agentID)
+	pushContext(t, subAgent.ID)
+
+	err = db.DeleteWorkspaceSubAgentByID(ctx, subAgent.ID)
+	require.NoError(t, err)
+	assert.True(t, hasContext(t, c1.agentID), "parent agent context must remain")
+	assert.False(t, hasContext(t, subAgent.ID), "deleted sub-agent context must be purged")
 }
 
 func TestAIGatewayKeysTableConstraints(t *testing.T) {

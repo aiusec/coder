@@ -514,14 +514,28 @@ WHERE
 	AND deleted = FALSE;
 
 -- name: DeleteWorkspaceSubAgentByID :exec
-UPDATE
-	workspace_agents
-SET
-	deleted = TRUE
-WHERE
-	id = $1
-	AND parent_id IS NOT NULL
-	AND deleted = FALSE;
+-- Soft-deletes a single sub-agent (a child agent such as a devcontainer
+-- agent). Called from the DeleteSubAgent RPC when a sub-agent is torn
+-- down, which can happen mid-build without a full workspace rebuild.
+--
+-- Agent context rows are hard-deleted for the same reason as in
+-- SoftDeletePriorWorkspaceAgents: they only describe live agents, the
+-- rebuild-time soft-delete queries skip already-deleted agents, and
+-- agents are never hard-deleted, so the rows would otherwise orphan
+-- forever.
+WITH soft_deleted_agents AS (
+    UPDATE workspace_agents
+    SET deleted = TRUE
+    WHERE id = @id
+        AND parent_id IS NOT NULL
+        AND deleted = FALSE
+    RETURNING id
+), purged_context_resources AS (
+    DELETE FROM workspace_agent_context_resources
+    WHERE workspace_agent_id IN (SELECT id FROM soft_deleted_agents)
+)
+DELETE FROM workspace_agent_context_snapshots
+WHERE workspace_agent_id IN (SELECT id FROM soft_deleted_agents);
 
 -- name: GetWorkspaceAgentsForMetrics :many
 SELECT
