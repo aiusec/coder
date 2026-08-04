@@ -1,5 +1,10 @@
-# Build Coder binaries, archives, and Linux packages for each supported OS/arch
-# and upload them as GitHub Actions artifacts.
+# Build the full set of release artifacts for every supported OS/arch and
+# platform, mirroring what .github/workflows/release.yaml produces:
+#   - Fat binaries, archives, and Linux packages (.tar.gz/.zip/.deb/.rpm/.apk)
+#   - Windows amd64 installer
+#   - Helm charts (coder, provisioner, ai-gateway)
+#   - Offline docs tarball
+#   - Multi-arch Linux Docker image (pushed to GHCR, no notarization of images)
 #
 # Optional code signing, enabled only when the matching secrets are present:
 #   - GPG:     GPG_RELEASE_KEY_BASE64 (base64 of an UNENCRYPTED private key)
@@ -7,16 +12,33 @@
 #              AC_APIKEY_ISSUER_ID, AC_APIKEY_ID, AC_APIKEY_P8_BASE64
 #              (P12 + App Store Connect API key; enables notarization)
 #   - Windows: EV_SIGNING_CERT, EV_KEY, EV_KEYSTORE, EV_TSA_URL,
-#              plus vars GCP_CODE_SIGNING_WORKLOAD_ID_PROVIDER and
+#              plus variables GCP_CODE_SIGNING_WORKLOAD_ID_PROVIDER and
 #              GCP_CODE_SIGNING_SERVICE_ACCOUNT (EV cert in Google Cloud KMS)
 #
 # Without those secrets the build is unsigned and still succeeds. Note that
 # self-provided keys do NOT produce Coder's official signatures: verification
 # against release.key in this repo will fail.
+#
+# Set the workflow_dispatch "publish_docker" input to false to skip pushing the
+# Docker image, and "attest" to true to generate an SBOM and attest the image
+# (requires GitHub OIDC, which forks may have disabled).
 name: Build Artifacts
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_docker:
+        description: "Push multi-arch Linux Docker images to GHCR."
+        type: boolean
+        default: true
+      attest_docker:
+        description: "Generate an SBOM and attest the Docker image (needs GitHub OIDC)."
+        type: boolean
+        default: false
+      publish_release:
+        description: "Create a GitHub Release from the built assets."
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -33,7 +55,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       # Signing is enabled only when all the secrets for a given signer are
       # present, so this workflow works both on forks (self-provided materials)
@@ -41,12 +63,25 @@ jobs:
       CODER_SIGN_GPG: ${{ secrets.GPG_RELEASE_KEY_BASE64 != '' && '1' || '0' }}
       CODER_SIGN_DARWIN: ${{ secrets.AC_CERTIFICATE_P12_BASE64 != '' && secrets.AC_CERTIFICATE_PASSWORD != '' && secrets.AC_APIKEY_ISSUER_ID != '' && secrets.AC_APIKEY_ID != '' && secrets.AC_APIKEY_P8_BASE64 != '' && '1' || '0' }}
       CODER_SIGN_WINDOWS: ${{ secrets.EV_SIGNING_CERT != '' && secrets.EV_KEY != '' && secrets.EV_KEYSTORE != '' && secrets.EV_TSA_URL != '' && vars.GCP_CODE_SIGNING_WORKLOAD_ID_PROVIDER != '' && vars.GCP_CODE_SIGNING_SERVICE_ACCOUNT != '' && '1' || '0' }}
+      # Docker images are pushed to the owner's own GHCR namespace. Runtime
+      # inputs are empty strings on push events, so `!= false` stays true.
+      PUBLISH_DOCKER: ${{ inputs.publish_docker != false }}
+      ATTEST_DOCKER: ${{ inputs.attest_docker == true }}
+      # A GitHub Release is created automatically on v* tag pushes, or manually
+      # via the publish_release input on workflow_dispatch.
+      PUBLISH_RELEASE: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true) }}
+      CODER_IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/coder
+      DOCKER_CLI_EXPERIMENTAL: "enabled"
     permissions:
-      # Only needed for actions/checkout.
-      contents: read
-      # Needed by google-github-actions/auth when Windows EV signing is
-      # enabled (GitHub cannot grant this conditionally).
+      # For actions/checkout and gh release creation.
+      contents: write
+      # To push Docker images to GHCR.
+      packages: write
+      # For google-github-actions/auth (Windows EV signing) and cosign keyless
+      # attestation. GitHub cannot grant these conditionally.
       id-token: write
+      # For actions/attest when attest_docker is enabled.
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,28 +106,36 @@ jobs:
           echo "CODER_FORCE_VERSION=$version" >> "$GITHUB_ENV"
           echo "$version"
 
-      - name: Print signing configuration
+      - name: Print configuration
         run: |
+          echo "version:        ${{ steps.version.outputs.version }}"
           echo "GPG signing:    ${{ env.CODER_SIGN_GPG }}"
           echo "Apple signing:  ${{ env.CODER_SIGN_DARWIN }}"
           echo "Windows signing: ${{ env.CODER_SIGN_WINDOWS }}"
+          echo "publish docker: ${{ env.PUBLISH_DOCKER }}"
+          echo "attest docker:  ${{ env.ATTEST_DOCKER }}"
+          echo "publish release: ${{ env.PUBLISH_RELEASE }}"
+          echo "image base:     ${{ env.CODER_IMAGE_BASE }}"
 
       - name: Set up mise tools
         uses: ./.github/actions/setup-mise
         with:
-          install-args: "go node pnpm"
+          install-args: "go node pnpm helm cosign syft"
 
-      # nfpm builds the .apk/.deb/.rpm packages.
+      # nfpm builds the .apk/.deb/.rpm packages; go-winres embeds Windows
+      # icons and version metadata.
       - name: Install Go mise tools
-        run: ./.github/scripts/retry.sh -- mise install --locked go:github.com/goreleaser/nfpm/v2/cmd/nfpm
+        run: |
+          ./.github/scripts/retry.sh -- mise install --locked go:github.com/goreleaser/nfpm/v2/cmd/nfpm
+          ./.github/scripts/retry.sh -- mise install --locked go:github.com/tc-hib/go-winres
 
       - name: Install pnpm dependencies
         uses: ./.github/actions/pnpm-install
 
       # zstd compresses the slim binaries that fat binaries embed; zip creates
-      # the darwin/windows archives.
+      # the darwin/windows archives; nsis builds the Windows installer.
       - name: Install system packages
-        run: sudo apt-get install -y zip zstd
+        run: sudo apt-get install -y zip zstd nsis
 
       # Necessary for Apple codesign and notarization.
       - name: Install rcodesign
@@ -154,6 +197,14 @@ jobs:
         if: env.CODER_SIGN_WINDOWS == '1'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
+      - name: Login to GHCR
+        if: env.PUBLISH_DOCKER == 'true'
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download Go modules
         run: ./.github/scripts/retry.sh -- go mod download
 
@@ -164,17 +215,22 @@ jobs:
 
       # CODER_SIGN_* are "1" only when the corresponding secrets are present,
       # so signing is skipped automatically otherwise.
-      - name: Build binaries, archives, and packages
+      - name: Build binaries, archives, packages, installer, and Helm charts
         run: |
           set -euo pipefail
           version="$(./scripts/version.sh)"
           make -j \
             build/coder_"$version"_linux_{amd64,armv7,arm64}.{tar.gz,apk,deb,rpm} \
-            build/coder_"$version"_{darwin,windows}_{amd64,arm64}.zip
+            build/coder_"$version"_{darwin,windows}_{amd64,arm64}.zip \
+            build/coder_"$version"_windows_amd64_installer.exe \
+            build/coder_helm_"$version".tgz \
+            build/provisioner_helm_"$version".tgz \
+            build/ai-gateway_helm_"$version".tgz
         env:
           CODER_SIGN_GPG: ${{ secrets.GPG_RELEASE_KEY_BASE64 != '' && '1' || '0' }}
           CODER_SIGN_DARWIN: ${{ secrets.AC_CERTIFICATE_P12_BASE64 != '' && secrets.AC_CERTIFICATE_PASSWORD != '' && secrets.AC_APIKEY_ISSUER_ID != '' && secrets.AC_APIKEY_ID != '' && secrets.AC_APIKEY_P8_BASE64 != '' && '1' || '0' }}
           CODER_SIGN_WINDOWS: ${{ secrets.EV_SIGNING_CERT != '' && secrets.EV_KEY != '' && secrets.EV_KEYSTORE != '' && secrets.EV_TSA_URL != '' && vars.GCP_CODE_SIGNING_WORKLOAD_ID_PROVIDER != '' && vars.GCP_CODE_SIGNING_SERVICE_ACCOUNT != '' && '1' || '0' }}
+          CODER_WINDOWS_RESOURCES: "1"
           CODER_GPG_RELEASE_KEY_BASE64: ${{ secrets.GPG_RELEASE_KEY_BASE64 }}
           AC_CERTIFICATE_FILE: /tmp/apple_cert.p12
           AC_CERTIFICATE_PASSWORD_FILE: /tmp/apple_cert_password.txt
@@ -188,6 +244,12 @@ jobs:
           GCLOUD_ACCESS_TOKEN: ${{ steps.gcloud_auth.outputs.access_token }}
           JSIGN_PATH: /tmp/jsign-6.0.jar
 
+      - name: Build offline docs
+        run: |
+          set -euo pipefail
+          version="$(./scripts/version.sh)"
+          make -j build/coder_docs_"$version".tgz
+
       - name: Delete Apple Developer certificate and API key
         if: env.CODER_SIGN_DARWIN == '1'
         run: rm -f /tmp/{apple_cert.p12,apple_cert_password.txt,apple_apikey.p8}
@@ -195,6 +257,46 @@ jobs:
       - name: Delete Windows EV Signing Cert
         if: env.CODER_SIGN_WINDOWS == '1'
         run: rm /tmp/ev_cert.pem
+
+      # Builds each arch image from the public coder-base image, then the
+      # multi-arch manifest, and pushes everything to CODER_IMAGE_BASE
+      # (ghcr.io/<owner>/coder on forks).
+      - name: Build and push Linux Docker images
+        if: env.PUBLISH_DOCKER == 'true'
+        run: |
+          set -euo pipefail
+          version="$(./scripts/version.sh)"
+          make build/coder_"$version"_linux_{amd64,arm64,armv7}.tag
+          make push/build/coder_"$version"_linux.tag
+          echo "docker image: $(./scripts/image_tag.sh)"
+
+      - name: SBOM generation and attestation
+        if: env.ATTEST_DOCKER == 'true'
+        continue-on-error: true
+        env:
+          COSIGN_EXPERIMENTAL: '1'
+        run: |
+          set -euo pipefail
+          version="$(./scripts/version.sh)"
+          image="$(./scripts/image_tag.sh)"
+          echo "Generating SBOM for image: ${image}"
+          syft "${image}" -o spdx-json > "coder_${version}_sbom.spdx.json"
+          echo "Attesting SBOM to image: ${image}"
+          cosign clean --force=true "${image}"
+          cosign attest --type spdxjson --predicate "coder_${version}_sbom.spdx.json" --yes "${image}"
+
+      - name: GitHub Attestation for binaries
+        if: env.ATTEST_DOCKER == 'true'
+        continue-on-error: true
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: |
+            ./build/*.tar.gz
+            ./build/*.zip
+            ./build/*.deb
+            ./build/*.rpm
+            ./build/*.apk
+            ./build/*_installer.exe
 
       - name: Generate checksums
         run: |
@@ -213,6 +315,64 @@ jobs:
         env:
           CODER_GPG_RELEASE_KEY_BASE64: ${{ secrets.GPG_RELEASE_KEY_BASE64 }}
 
+      # Creates a GitHub Release. On a v* tag push the tag already exists and
+      # becomes the release name. On workflow_dispatch there is no tag, so the
+      # release is named after the version and gh creates the tag.
+      - name: Publish GitHub Release
+        if: env.PUBLISH_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            tag_name="${{ github.ref_name }}"
+            if [[ "$tag_name" != v* ]]; then
+              echo "Skipping release: ref is not a version tag."
+              exit 0
+            fi
+          else
+            version="$(./scripts/version.sh)"
+            tag_name="v${version}"
+          fi
+
+          # Never clobber an existing release for the same tag.
+          if gh release view "$tag_name" --repo "$GITHUB_REPOSITORY" --json id >/dev/null 2>&1; then
+            echo "Release $tag_name already exists, skipping creation."
+            exit 0
+          fi
+
+          assets=()
+          for pattern in \
+            ./build/*_installer.exe \
+            ./build/*.tar.gz \
+            ./build/*.zip \
+            ./build/*.tgz \
+            ./build/*.apk \
+            ./build/*.deb \
+            ./build/*.rpm \
+            ./build/*_checksums.txt \
+            ./build/*_checksums.txt.asc \
+            ./coder_*_sbom.spdx.json; do
+            for f in $pattern; do
+              if [[ -f "$f" ]]; then
+                assets+=("$f")
+              fi
+            done
+          done
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "No assets found to publish."
+            exit 1
+          fi
+
+          notes="Automated build of ${tag_name} from commit ${GITHUB_SHA:0:12}."
+          echo "Creating release ${tag_name} with ${#assets[@]} assets."
+          gh release create "$tag_name" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$tag_name" \
+            --notes "$notes" \
+            "${assets[@]}"
+          echo "Published: https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag_name"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -220,13 +380,16 @@ jobs:
           path: |
             ./build/*_checksums.txt
             ./build/*_checksums.txt.asc
+            ./build/*_installer.exe
             ./build/*.tar.gz
             ./build/*.zip
+            ./build/*.tgz
+            ./build/*.apk
             ./build/*.deb
             ./build/*.rpm
-            ./build/*.apk
             ./build/coder-slim_*
             ./build/*.asc
+            ./coder_*_sbom.spdx.json
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
