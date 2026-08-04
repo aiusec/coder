@@ -1,0 +1,232 @@
+# Build Coder binaries, archives, and Linux packages for each supported OS/arch
+# and upload them as GitHub Actions artifacts.
+#
+# Optional code signing, enabled only when the matching secrets are present:
+#   - GPG:     GPG_RELEASE_KEY_BASE64 (base64 of an UNENCRYPTED private key)
+#   - Apple:   AC_CERTIFICATE_P12_BASE64, AC_CERTIFICATE_PASSWORD,
+#              AC_APIKEY_ISSUER_ID, AC_APIKEY_ID, AC_APIKEY_P8_BASE64
+#              (P12 + App Store Connect API key; enables notarization)
+#   - Windows: EV_SIGNING_CERT, EV_KEY, EV_KEYSTORE, EV_TSA_URL,
+#              plus vars GCP_CODE_SIGNING_WORKLOAD_ID_PROVIDER and
+#              GCP_CODE_SIGNING_SERVICE_ACCOUNT (EV cert in Google Cloud KMS)
+#
+# Without those secrets the build is unsigned and still succeeds. Note that
+# self-provided keys do NOT produce Coder's official signatures: verification
+# against release.key in this repo will fail.
+name: Build Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "release/*"
+    tags:
+      - "v*"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # Signing is enabled only when all the secrets for a given signer are
+      # present, so this workflow works both on forks (self-provided materials)
+      # and in the official repo.
+      CODER_SIGN_GPG: ${{ secrets.GPG_RELEASE_KEY_BASE64 != '' && '1' || '0' }}
+      CODER_SIGN_DARWIN: ${{ secrets.AC_CERTIFICATE_P12_BASE64 != '' && secrets.AC_CERTIFICATE_PASSWORD != '' && secrets.AC_APIKEY_ISSUER_ID != '' && secrets.AC_APIKEY_ID != '' && secrets.AC_APIKEY_P8_BASE64 != '' && '1' || '0' }}
+      CODER_SIGN_WINDOWS: ${{ secrets.EV_SIGNING_CERT != '' && secrets.EV_KEY != '' && secrets.EV_KEYSTORE != '' && secrets.EV_TSA_URL != '' && vars.GCP_CODE_SIGNING_WORKLOAD_ID_PROVIDER != '' && vars.GCP_CODE_SIGNING_SERVICE_ACCOUNT != '' && '1' || '0' }}
+    permissions:
+      # Only needed for actions/checkout.
+      contents: read
+      # Needed by google-github-actions/auth when Windows EV signing is
+      # enabled (GitHub cannot grant this conditionally).
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # actions/checkout drops annotated tags unless we force-fetch them.
+      # This matters on tag pushes, and version.sh handles the no-tags case
+      # for forks that never synced tags.
+      - name: Fetch git tags
+        run: git fetch --tags --force
+
+      - name: Print version
+        id: version
+        run: |
+          set -euo pipefail
+          version="$(./scripts/version.sh)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Pin the version so version.sh agrees with Makefile's VERSION even
+          # after later steps add commits to the working tree.
+          echo "CODER_FORCE_VERSION=$version" >> "$GITHUB_ENV"
+          echo "$version"
+
+      - name: Print signing configuration
+        run: |
+          echo "GPG signing:    ${{ env.CODER_SIGN_GPG }}"
+          echo "Apple signing:  ${{ env.CODER_SIGN_DARWIN }}"
+          echo "Windows signing: ${{ env.CODER_SIGN_WINDOWS }}"
+
+      - name: Set up mise tools
+        uses: ./.github/actions/setup-mise
+        with:
+          install-args: "go node pnpm"
+
+      # nfpm builds the .apk/.deb/.rpm packages.
+      - name: Install Go mise tools
+        run: ./.github/scripts/retry.sh -- mise install --locked go:github.com/goreleaser/nfpm/v2/cmd/nfpm
+
+      - name: Install pnpm dependencies
+        uses: ./.github/actions/pnpm-install
+
+      # zstd compresses the slim binaries that fat binaries embed; zip creates
+      # the darwin/windows archives.
+      - name: Install system packages
+        run: sudo apt-get install -y zip zstd
+
+      # Necessary for Apple codesign and notarization.
+      - name: Install rcodesign
+        if: env.CODER_SIGN_DARWIN == '1'
+        run: |
+          set -euo pipefail
+          ./.github/scripts/retry.sh -- wget -O /tmp/rcodesign.tar.gz https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.22.0/apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz
+          sudo tar -xzf /tmp/rcodesign.tar.gz \
+            -C /usr/bin \
+            --strip-components=1 \
+            apple-codesign-0.22.0-x86_64-unknown-linux-musl/rcodesign
+          rm /tmp/rcodesign.tar.gz
+
+      - name: Setup Apple Developer certificate and API key
+        if: env.CODER_SIGN_DARWIN == '1'
+        run: |
+          set -euo pipefail
+          touch /tmp/{apple_cert.p12,apple_cert_password.txt,apple_apikey.p8}
+          chmod 600 /tmp/{apple_cert.p12,apple_cert_password.txt,apple_apikey.p8}
+          echo "$AC_CERTIFICATE_P12_BASE64" | base64 -d > /tmp/apple_cert.p12
+          echo "$AC_CERTIFICATE_PASSWORD" > /tmp/apple_cert_password.txt
+          echo "$AC_APIKEY_P8_BASE64" | base64 -d > /tmp/apple_apikey.p8
+        env:
+          AC_CERTIFICATE_P12_BASE64: ${{ secrets.AC_CERTIFICATE_P12_BASE64 }}
+          AC_CERTIFICATE_PASSWORD: ${{ secrets.AC_CERTIFICATE_PASSWORD }}
+          AC_APIKEY_P8_BASE64: ${{ secrets.AC_APIKEY_P8_BASE64 }}
+
+      # Necessary for signing Windows binaries with jsign.
+      - name: Setup Java
+        if: env.CODER_SIGN_WINDOWS == '1'
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: "zulu"
+          java-version: "11.0"
+
+      - name: Setup Windows EV Signing Certificate
+        if: env.CODER_SIGN_WINDOWS == '1'
+        run: |
+          set -euo pipefail
+          touch /tmp/ev_cert.pem
+          chmod 600 /tmp/ev_cert.pem
+          echo "$EV_SIGNING_CERT" > /tmp/ev_cert.pem
+          ./.github/scripts/retry.sh -- wget https://github.com/ebourg/jsign/releases/download/6.0/jsign-6.0.jar -O /tmp/jsign-6.0.jar
+        env:
+          EV_SIGNING_CERT: ${{ secrets.EV_SIGNING_CERT }}
+
+      # Signing keys live in Google Cloud KMS and are unlocked with a short
+      # lived access token obtained through Workload Identity Federation.
+      - name: Authenticate to Google Cloud
+        id: gcloud_auth
+        if: env.CODER_SIGN_WINDOWS == '1'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_CODE_SIGNING_WORKLOAD_ID_PROVIDER }}
+          service_account: ${{ vars.GCP_CODE_SIGNING_SERVICE_ACCOUNT }}
+          token_format: "access_token"
+
+      - name: Setup GCloud SDK
+        if: env.CODER_SIGN_WINDOWS == '1'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Download Go modules
+        run: ./.github/scripts/retry.sh -- go mod download
+
+      # Touch generated files so make does not try to regenerate them and need
+      # protoc, sqlc, Postgres, and the other codegen tools.
+      - name: Mark generated files fresh
+        run: make gen/mark-fresh
+
+      # CODER_SIGN_* are "1" only when the corresponding secrets are present,
+      # so signing is skipped automatically otherwise.
+      - name: Build binaries, archives, and packages
+        run: |
+          set -euo pipefail
+          version="$(./scripts/version.sh)"
+          make -j \
+            build/coder_"$version"_linux_{amd64,armv7,arm64}.{tar.gz,apk,deb,rpm} \
+            build/coder_"$version"_{darwin,windows}_{amd64,arm64}.zip
+        env:
+          CODER_SIGN_GPG: ${{ secrets.GPG_RELEASE_KEY_BASE64 != '' && '1' || '0' }}
+          CODER_SIGN_DARWIN: ${{ secrets.AC_CERTIFICATE_P12_BASE64 != '' && secrets.AC_CERTIFICATE_PASSWORD != '' && secrets.AC_APIKEY_ISSUER_ID != '' && secrets.AC_APIKEY_ID != '' && secrets.AC_APIKEY_P8_BASE64 != '' && '1' || '0' }}
+          CODER_SIGN_WINDOWS: ${{ secrets.EV_SIGNING_CERT != '' && secrets.EV_KEY != '' && secrets.EV_KEYSTORE != '' && secrets.EV_TSA_URL != '' && vars.GCP_CODE_SIGNING_WORKLOAD_ID_PROVIDER != '' && vars.GCP_CODE_SIGNING_SERVICE_ACCOUNT != '' && '1' || '0' }}
+          CODER_GPG_RELEASE_KEY_BASE64: ${{ secrets.GPG_RELEASE_KEY_BASE64 }}
+          AC_CERTIFICATE_FILE: /tmp/apple_cert.p12
+          AC_CERTIFICATE_PASSWORD_FILE: /tmp/apple_cert_password.txt
+          AC_APIKEY_ISSUER_ID: ${{ secrets.AC_APIKEY_ISSUER_ID }}
+          AC_APIKEY_ID: ${{ secrets.AC_APIKEY_ID }}
+          AC_APIKEY_FILE: /tmp/apple_apikey.p8
+          EV_KEY: ${{ secrets.EV_KEY }}
+          EV_KEYSTORE: ${{ secrets.EV_KEYSTORE }}
+          EV_TSA_URL: ${{ secrets.EV_TSA_URL }}
+          EV_CERTIFICATE_PATH: /tmp/ev_cert.pem
+          GCLOUD_ACCESS_TOKEN: ${{ steps.gcloud_auth.outputs.access_token }}
+          JSIGN_PATH: /tmp/jsign-6.0.jar
+
+      - name: Delete Apple Developer certificate and API key
+        if: env.CODER_SIGN_DARWIN == '1'
+        run: rm -f /tmp/{apple_cert.p12,apple_cert_password.txt,apple_apikey.p8}
+
+      - name: Delete Windows EV Signing Cert
+        if: env.CODER_SIGN_WINDOWS == '1'
+        run: rm /tmp/ev_cert.pem
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          version="$(./scripts/version.sh)"
+          pushd build
+          sha256sum coder_* | grep -v 'checksums.txt' > "coder_${version}_checksums.txt"
+          popd
+
+      - name: Sign checksums file with GPG
+        if: env.CODER_SIGN_GPG == '1'
+        run: |
+          set -euo pipefail
+          version="$(./scripts/version.sh)"
+          ./scripts/sign_with_gpg.sh "build/coder_${version}_checksums.txt"
+        env:
+          CODER_GPG_RELEASE_KEY_BASE64: ${{ secrets.GPG_RELEASE_KEY_BASE64 }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-build-artifacts
+          path: |
+            ./build/*_checksums.txt
+            ./build/*_checksums.txt.asc
+            ./build/*.tar.gz
+            ./build/*.zip
+            ./build/*.deb
+            ./build/*.rpm
+            ./build/*.apk
+            ./build/coder-slim_*
+            ./build/*.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
