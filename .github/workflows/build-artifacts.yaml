@@ -373,23 +373,468 @@ jobs:
             "${assets[@]}"
           echo "Published: https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag_name"
 
-      - name: Upload build artifacts
+      # upload-artifact bundles every file matched by a single invocation into
+      # one archive. Upload each file as its own artifact so every build output
+      # can be downloaded individually.
+      #
+      # Linux archives
+      - name: Upload coder_linux_amd64.tar.gz
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: coder-build-artifacts
-          path: |
-            ./build/*_checksums.txt
-            ./build/*_checksums.txt.asc
-            ./build/*_installer.exe
-            ./build/*.tar.gz
-            ./build/*.zip
-            ./build/*.tgz
-            ./build/*.apk
-            ./build/*.deb
-            ./build/*.rpm
-            ./build/coder-slim_*
-            ./build/*.asc
-            ./coder_*_sbom.spdx.json
+          name: coder_${{ steps.version.outputs.version }}_linux_amd64.tar.gz
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_arm64.tar.gz
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_arm64.tar.gz
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_arm64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_armv7.tar.gz
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_armv7.tar.gz
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_armv7.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      # Darwin and Windows archives
+      - name: Upload coder_darwin_amd64.zip
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_darwin_amd64.zip
+          path: ./build/coder_${{ steps.version.outputs.version }}_darwin_amd64.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_darwin_arm64.zip
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_darwin_arm64.zip
+          path: ./build/coder_${{ steps.version.outputs.version }}_darwin_arm64.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_windows_amd64.zip
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_windows_amd64.zip
+          path: ./build/coder_${{ steps.version.outputs.version }}_windows_amd64.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_windows_arm64.zip
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_windows_arm64.zip
+          path: ./build/coder_${{ steps.version.outputs.version }}_windows_arm64.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      # Linux packages
+      - name: Upload coder_linux_amd64.apk
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_amd64.apk
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_amd64.apk
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_amd64.deb
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_amd64.deb
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_amd64.deb
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_amd64.rpm
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_amd64.rpm
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_amd64.rpm
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_arm64.apk
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_arm64.apk
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_arm64.apk
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_arm64.deb
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_arm64.deb
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_arm64.deb
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_arm64.rpm
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_arm64.rpm
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_arm64.rpm
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_armv7.apk
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_armv7.apk
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_armv7.apk
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_armv7.deb
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_armv7.deb
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_armv7.deb
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_armv7.rpm
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_armv7.rpm
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_armv7.rpm
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      # Windows installer
+      - name: Upload coder_windows_amd64_installer.exe
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_windows_amd64_installer.exe
+          path: ./build/coder_${{ steps.version.outputs.version }}_windows_amd64_installer.exe
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      # Helm charts
+      - name: Upload coder_helm.tgz
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_helm_${{ steps.version.outputs.version }}.tgz
+          path: ./build/coder_helm_${{ steps.version.outputs.version }}.tgz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload provisioner_helm.tgz
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: provisioner_helm_${{ steps.version.outputs.version }}.tgz
+          path: ./build/provisioner_helm_${{ steps.version.outputs.version }}.tgz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload ai-gateway_helm.tgz
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ai-gateway_helm_${{ steps.version.outputs.version }}.tgz
+          path: ./build/ai-gateway_helm_${{ steps.version.outputs.version }}.tgz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      # Offline docs
+      - name: Upload coder_docs.tgz
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_docs_${{ steps.version.outputs.version }}.tgz
+          path: ./build/coder_docs_${{ steps.version.outputs.version }}.tgz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      # Checksums and GPG signature
+      - name: Upload coder_checksums.txt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_checksums.txt
+          path: ./build/coder_${{ steps.version.outputs.version }}_checksums.txt
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_checksums.txt.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_checksums.txt.asc
+          path: ./build/coder_${{ steps.version.outputs.version }}_checksums.txt.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      # Slim binaries embedded in the fat binaries. Each one is uploaded
+      # individually so users can download a specific binary without pulling
+      # the archive or the fat binary.
+      - name: Upload coder-slim_linux_amd64
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_linux_amd64
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_linux_amd64
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_linux_arm64
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_linux_arm64
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_linux_arm64
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_linux_armv7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_linux_armv7
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_linux_armv7
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_darwin_amd64
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_darwin_amd64
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_darwin_amd64
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_darwin_arm64
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_darwin_arm64
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_darwin_arm64
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_windows_amd64.exe
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_windows_amd64.exe
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_windows_amd64.exe
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_windows_arm64.exe
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_windows_arm64.exe
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_windows_arm64.exe
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      # Slim binary intermediates produced while building the fat binaries.
+      - name: Upload coder-slim.tar
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}.tar
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}.tar
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim.tar.zst
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}.tar.zst
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}.tar.zst
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_checksums.sha1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_checksums.sha1
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_checksums.sha1
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      # GPG signatures for the fat and slim binaries, produced when signing is
+      # enabled. The raw fat binaries are not uploaded, only their signatures.
+      - name: Upload coder_linux_amd64.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_amd64.asc
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_amd64.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_arm64.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_arm64.asc
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_arm64.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_linux_armv7.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_linux_armv7.asc
+          path: ./build/coder_${{ steps.version.outputs.version }}_linux_armv7.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_darwin_amd64.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_darwin_amd64.asc
+          path: ./build/coder_${{ steps.version.outputs.version }}_darwin_amd64.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_darwin_arm64.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_darwin_arm64.asc
+          path: ./build/coder_${{ steps.version.outputs.version }}_darwin_arm64.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_windows_amd64.exe.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_windows_amd64.exe.asc
+          path: ./build/coder_${{ steps.version.outputs.version }}_windows_amd64.exe.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder_windows_arm64.exe.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_windows_arm64.exe.asc
+          path: ./build/coder_${{ steps.version.outputs.version }}_windows_arm64.exe.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_linux_amd64.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_linux_amd64.asc
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_linux_amd64.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_linux_arm64.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_linux_arm64.asc
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_linux_arm64.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_linux_armv7.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_linux_armv7.asc
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_linux_armv7.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_darwin_amd64.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_darwin_amd64.asc
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_darwin_amd64.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_darwin_arm64.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_darwin_arm64.asc
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_darwin_arm64.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_windows_amd64.exe.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_windows_amd64.exe.asc
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_windows_amd64.exe.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload coder-slim_windows_arm64.exe.asc
+        if: env.CODER_SIGN_GPG == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder-slim_${{ steps.version.outputs.version }}_windows_arm64.exe.asc
+          path: ./build/coder-slim_${{ steps.version.outputs.version }}_windows_arm64.exe.asc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      # SBOM generated only when attestation is enabled.
+      - name: Upload coder_sbom.spdx.json
+        if: env.ATTEST_DOCKER == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coder_${{ steps.version.outputs.version }}_sbom.spdx.json
+          path: ./coder_${{ steps.version.outputs.version }}_sbom.spdx.json
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
